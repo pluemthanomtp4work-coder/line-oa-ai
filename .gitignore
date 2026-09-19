@@ -1,6 +1,8 @@
 node_modules/
 .env
 data/
-!data/.gitkeep
 test/out/
 *.log
+
+# ตั้งค่าเฉพาะเครื่องของแต่ละคน ไม่ใช่ของโปรเจกต์
+.claude/settings.local.json
