@@ -4,7 +4,6 @@ require('./env').load();
 
 const express = require('express');
 const path = require('path');
-const fsp = require('fs/promises');
 
 const store = require('./store');
 const gate = require('./adminGate');
@@ -99,7 +98,8 @@ const many = (v) => (v == null ? [] : [].concat(v));
 const bool = (v) => one(v) === '1' || one(v) === 'on' || one(v) === 'true';
 const need = (v, what) => { const s = String(one(v) || '').trim(); if (!s) throw new Error('ต้องกรอก' + what); return s; };
 
-// เขียนไฟล์ที่อัปลง data/uploads แล้วบันทึกแถวในตาราง files
+// อัปไฟล์เข้า storage แล้วบันทึกแถวในตาราง files
+// ชื่อที่เก็บจริงใช้ id ของแถว ไม่ใช่ชื่อที่ผู้ใช้ตั้ง — กันชื่อชนกันและกัน path traversal ไปในตัว
 async function saveUpload(file, folderId) {
   if (!file || !file.data || !file.data.length) throw new Error('ไม่ได้เลือกไฟล์');
   if (file.data.length > MAX_UPLOAD) throw new Error('ไฟล์ใหญ่เกิน ' + Math.round(MAX_UPLOAD / 1024 / 1024) + ' MB');
@@ -108,8 +108,14 @@ async function saveUpload(file, folderId) {
     name: safe, size: file.data.length, mime: file.mime,
     folderId: folderId || '', allow: [], trashed: false, stored: '',
   });
-  const stored = rec.id + path.extname(safe);
-  await fsp.writeFile(path.join(store.UPLOAD_DIR, stored), file.data);
+  const stored = rec.id + path.extname(safe).toLowerCase();
+  try {
+    await store.putFile(stored, file.data, file.mime);
+  } catch (e) {
+    // อัปไม่ขึ้น → ลบแถวทิ้ง ไม่งั้นจะเหลือรายการไฟล์ที่กดเปิดแล้ว 404 ตลอดไป
+    await store.remove('files', rec.id).catch(() => {});
+    throw new Error('อัปไฟล์เข้าที่เก็บไม่สำเร็จ: ' + e.message);
+  }
   await store.update('files', rec.id, { stored });
   return { ...rec, stored };
 }
@@ -145,13 +151,13 @@ app.get('/files/open/:id', async (req, res) => {
   const { id } = req.params;
   if (!signed.verify(id, req.query.exp, req.query.sig)) return res.status(403).send('ลิงก์หมดอายุหรือไม่ถูกต้อง');
   try {
-    const rows = await store.read('files');
-    const f = rows.find((x) => x.id === id);
+    const f = await store.get('files', id);
     if (!f || !f.stored) return res.status(404).send('ไม่พบไฟล์');
     res.type(f.mime || 'application/octet-stream');
     res.setHeader('cache-control', 'private, max-age=300');
-    res.send(await fsp.readFile(path.join(store.UPLOAD_DIR, f.stored)));
+    res.send(await store.getFile(f.stored));
   } catch (e) {
+    console.error('[file]', id, e.message);
     res.status(404).send('ไม่พบไฟล์');
   }
 });
@@ -255,8 +261,7 @@ action('/training/knowledge/toggle', '/training', async (req) => {
   return 'อัปเดตสถานะแล้ว';
 });
 action('/training/knowledge/enable-all', '/training', async () => {
-  let n = 0;
-  await store.mutate('knowledge', (rows) => rows.forEach((r) => { if (!r.enabled) { r.enabled = true; n += 1; } }));
+  const n = await store.updateWhere('knowledge', { field: 'enabled', eq: false }, { enabled: true });
   return `เปิดใช้เพิ่ม ${n} ข้อ`;
 });
 action('/training/knowledge/delete', '/training', async (req) => {
@@ -287,11 +292,9 @@ action('/training/docs/upload', '/training', async (req) => {
 });
 action('/training/docs/delete', '/training', async (req) => {
   const id = need(req.body.id, 'id');
-  await store.mutate('knowledge', (rows) => {
-    for (let i = rows.length - 1; i >= 0; i -= 1) if (rows[i].docId === id) rows.splice(i, 1);
-  });
+  const n = await store.deleteWhere('knowledge', { field: 'docId', eq: id });
   await store.remove('docs', id);
-  return 'ลบเอกสารและความรู้ที่มาจากไฟล์นี้แล้ว';
+  return `ลบเอกสารและความรู้ที่มาจากไฟล์นี้ ${n} ข้อแล้ว`;
 });
 
 action('/training/rules/save', '/training', async (req) => {
@@ -322,16 +325,19 @@ action('/training/prompts/save', '/training', async (req) => {
 });
 action('/training/prompts/activate', '/training', async (req) => {
   const id = need(req.body.id, 'id');
-  await store.mutate('prompts', (rows) => rows.forEach((r) => { r.active = r.id === id; }));
+  // ปิดตัวที่เปิดอยู่ก่อน แล้วค่อยเปิดตัวใหม่ — ลำดับนี้กันไม่ให้มี active สองตัวพร้อมกัน
+  await store.updateWhere('prompts', { field: 'active', eq: true }, { active: false });
+  await store.update('prompts', id, { active: true });
   return 'เปลี่ยนบุคลิกที่ใช้งานแล้ว';
 });
 action('/training/prompts/delete', '/training', async (req) => {
   const id = need(req.body.id, 'id');
-  const row = (await store.read('prompts')).find((r) => r.id === id);
+  const row = await store.get('prompts', id);
   await store.remove('prompts', id);
   // ลบชุดที่ใช้อยู่ → เลื่อนชุดแรกที่เหลือขึ้นมาแทน ไม่ปล่อยให้บอทไม่มีบุคลิก
   if (row && row.active) {
-    await store.mutate('prompts', (rows) => { if (rows[0]) rows[0].active = true; });
+    const left = await store.read('prompts');
+    if (left[0]) await store.update('prompts', left[0].id, { active: true });
   }
   return 'ลบชุดบุคลิกแล้ว';
 });
@@ -413,7 +419,8 @@ action('/files/restore', backFiles, async (req) => {
 });
 action('/files/purge', backFiles, async (req) => {
   const row = await store.remove('files', need(req.body.id, 'id'));
-  if (row.stored) await fsp.unlink(path.join(store.UPLOAD_DIR, row.stored)).catch(() => {});
+  // ลบไฟล์จริงหลังลบแถวสำเร็จ — ถ้าลบไฟล์พลาด แถวหายไปแล้วก็ไม่มีใครอ้างถึงไฟล์นั้นอีก
+  if (row.stored) await store.delFile(row.stored).catch((e) => console.warn('[files] ลบไฟล์ใน storage ไม่สำเร็จ:', e.message));
   return 'ลบถาวรแล้ว';
 });
 
@@ -525,7 +532,8 @@ action('/admin/menu/publish', '/admin/menu', async (req) => {
   req._back = '/admin/menu?id=' + encodeURIComponent(saved.id);
 
   // ร่างอื่นที่เคยเผยแพร่ไม่ใช่ตัวปัจจุบันแล้ว + เก็บกวาดเมนูเก่าบน LINE (มีลิมิตจำนวนชุด)
-  await store.mutate('richmenus', (rows) => rows.forEach((r) => { if (r.id !== saved.id) r.published = false; }));
+  await store.updateWhere('richmenus', { field: 'published', eq: true }, { published: false });
+  await store.update('richmenus', saved.id, { published: true });
   try {
     const live = await line.listRichMenus();
     for (const r of live.richmenus || []) {
@@ -593,8 +601,10 @@ action('/contacts/delete', '/contacts', async (req) => {
 // ================= start =================
 if (require.main === module) {
   store.init()
-    .then((made) => {
-      if (made.length) console.log('[init] สร้างไฟล์ข้อมูล:', made.join(', '));
+    .then(({ driver, broken }) => {
+      console.log(`[store] driver: ${driver}`);
+      if (driver === 'memory') console.warn('⚠️  ไม่ได้ตั้ง SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY — ข้อมูลเก็บใน RAM หายเมื่อปิดโปรเซส');
+      if (broken.length) console.warn('⚠️  อ่านตารางไม่ได้:\n   - ' + broken.join('\n   - '));
       app.listen(PORT, () => {
         console.log(`เปิดที่ http://localhost:${PORT}/admin?key=${process.env.ADMIN_KEY || '<ยังไม่ได้ตั้ง ADMIN_KEY>'}`);
         if (!gate.ADMIN_KEY) console.warn('⚠️  ยังไม่ได้ตั้ง ADMIN_KEY ใน .env — หน้าหลังบ้านจะตอบ 503');

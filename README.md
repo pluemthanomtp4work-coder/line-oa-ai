@@ -53,7 +53,8 @@ npm run init && npm start
 | [adminNav.js](src/adminNav.js) | แท็บเมนู (แหล่งความจริงเดียว) |
 | [adminGate.js](src/adminGate.js) | ด่าน `?key=` · hidden key input · PRG redirect + flash |
 | [adminUi.js](src/adminUi.js) | `esc()` การ์ดสถิติ กราฟแท่ง ตารางค้นหา โครง `shell()` |
-| [store.js](src/store.js) | ชั้นข้อมูล (ไฟล์ JSON ใน `data/`) — เปลี่ยนไป Postgres แก้แค่ไฟล์นี้ |
+| [store.js](src/store.js) | ชั้นข้อมูล — driver `supabase` (จริง) หรือ `memory` (เทสต์) เลือกเองจาก env |
+| [supabase.js](src/supabase.js) | คุย PostgREST + Storage ด้วย service_role key |
 | [ai.js](src/ai.js) | เรียก Gemini + คิดค่าใช้จ่ายต่อ call แล้ว log |
 | [bot.js](src/bot.js) | สมองบอท — ประกอบ prompt จากความรู้/persona/memory + เช็คกฎก่อน |
 | [line.js](src/line.js) | ตรวจลายเซ็น webhook · ตอบ/push · โปรไฟล์ · rich menu |
@@ -80,5 +81,8 @@ npm run shot
   ใช้กับทีมกันเองได้ ถ้าเปิดให้คนนอกต้องทำ session จริงก่อน
 - **ตัวเลขค่าใช้จ่าย = เท่าที่ log ไว้** ไม่ใช่บิลจริง — กรอกยอดบิลจริงในกล่องท้ายหน้า Dashboard เพื่อดูส่วนต่าง
 - **แอดมินอ่านจาก `LINE_ADMIN_USER_IDS` ใน `.env` เท่านั้น** แถวแอดมินจะบล็อก/ลด/ลบจากหน้าเว็บไม่ได้ (กันล็อกตัวเอง)
-- **ข้อมูลเก็บเป็นไฟล์ JSON ใน `data/`** เหมาะกับหลักพันแถว ถ้าโตกว่านั้นให้เปลี่ยน `store.js` เป็น SQLite/Postgres
+- **ข้อมูลทั้งหมดอยู่บน Supabase** ไม่มีอะไรเก็บบนดิสก์ของเซิร์ฟเวอร์ — จงใจ เพราะโฮสต์อย่าง Render/Railway/Fly
+  ไฟล์ระบบเป็น ephemeral ถ้าเก็บลงดิสก์ ข้อมูลจะหายทุกครั้งที่ deploy ใหม่ (บนเครื่อง dev จะไม่มีวันเจอบั๊กนี้)
+- **ไม่ตั้ง `SUPABASE_*` = ระบบถอยไปใช้ RAM** เปิดหน้าเว็บได้ปกติแต่ข้อมูลหายเมื่อปิดโปรเซส ตอนบูตจะเตือนให้เห็น
+- **ตาราง `ai_logs` โตเร็วสุด** ทุก call ของบอทลงหนึ่งแถว ควรตั้งลบของเก่าเกิน 90 วันเมื่อเริ่มมีผู้ใช้จริง
 - **เมนู LINE เผยแพร่แล้วมีผลทันทีกับผู้ใช้ทุกคน** และระบบจะลบเมนูเก่าบน LINE ทิ้งเพื่อไม่ให้ชนลิมิต

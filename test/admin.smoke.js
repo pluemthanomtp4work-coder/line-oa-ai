@@ -3,7 +3,10 @@
 //
 // ต้องตั้ง env ให้ครบ "ก่อน" require ไฟล์ใน src/ เพราะ adminGate/store อ่านค่าตอนโหลดโมดูล
 process.env.ADMIN_KEY = 'test-key-123';
-process.env.DATA_DIR = require('path').join(require('os').tmpdir(), 'line-oa-ai-smoke-' + process.pid);
+// บังคับให้ store ใช้ driver memory — ถ้าปล่อยว่าง env.js จะเติมค่าจาก .env แล้วเทสต์จะไป
+// อ่าน/เขียน Supabase จริงของโปรเจกต์ ซึ่งทั้งช้า ทั้งเสี่ยงไปลบข้อมูลจริงทิ้ง
+process.env.SUPABASE_URL = '';
+process.env.SUPABASE_SERVICE_ROLE_KEY = '';
 // ตั้งเป็นค่าว่าง ไม่ใช่ delete — env.js จะเติมค่าจาก .env ให้เฉพาะคีย์ที่ "ไม่มีใน process.env"
 // ถ้า delete ทิ้ง พอเครื่องไหนมี .env ที่ใส่คีย์ LINE จริง เทสต์จะกลายเป็นคนละเคสทันที
 // (เคยแตกมาแล้ว: คาด 503 "ยังไม่ได้ตั้งค่า" แต่ได้ 401 "ลายเซ็นผิด")
@@ -12,7 +15,6 @@ process.env.LINE_CHANNEL_ACCESS_TOKEN = '';
 process.env.GEMINI_API_KEY = '';       // กันเทสต์เผลอยิง API จริงแล้วเสียเงิน
 process.env.LINE_ADMIN_USER_IDS = 'Uadmin0000';
 
-const fs = require('fs');
 const store = require('../src/store');
 const app = require('../src/index');
 
@@ -26,7 +28,8 @@ const check = (name, cond, extra = '') => {
 const XSS = '<img src=x onerror=alert(1)>';
 
 async function seed() {
-  await store.init();
+  const { driver } = await store.init();
+  if (driver !== 'memory') { console.error('หยุด: เทสต์ต้องรันบน driver memory เท่านั้น แต่ได้ ' + driver); process.exit(1); }
   // ผู้ใช้: 1 แอดมิน + 1 ชื่อเป็น payload XSS + อีก 20 คนเพื่อให้ตารางเกิน TOP_ROWS
   await store.insert('users', { lineUserId: 'Uadmin0000', displayName: 'แอดมิน', role: 'member', perms: { chat: true }, blocked: false, lastSeen: '2026-09-19T03:00:00Z' });
   await store.insert('users', { lineUserId: 'Uxss', displayName: XSS, role: 'guest', perms: {}, blocked: false, lastSeen: '2026-09-19T03:00:00Z' });
@@ -95,12 +98,16 @@ async function main() {
   check('นับผู้ใช้จากตารางผู้ใช้ (22 คน) ไม่ใช่จาก log (2 คน)', dashHtml.includes('>22<'), 'ไม่พบเลข 22');
 
   // ---- แหล่งข้อมูลล่ม -> ยัง 200 + ขึ้นคำเตือน ----
-  fs.renameSync(store.DATA_DIR + '/users.json', store.DATA_DIR + '/users.off');
+  // จำลองด้วยการให้ read('users') โยน error เหมือนตอน Supabase ล่มหรือตารางยังไม่ถูกสร้าง
+  const realRead = store.read;
+  store.read = (name) => (name === 'users'
+    ? Promise.reject(new Error('Supabase 503: upstream unavailable'))
+    : realRead(name));
   const down = await get('/admin?key=' + KEY);
   const downHtml = await down.text();
   check('ข้อมูลล่ม -> ยัง 200', down.status === 200, 'got ' + down.status);
   check('ขึ้นคำเตือนว่ายังอ่านข้อมูลไม่ได้', downHtml.includes('class="warn"'));
-  fs.renameSync(store.DATA_DIR + '/users.off', store.DATA_DIR + '/users.json');
+  store.read = realRead;
 
   // ---- POST: PRG + ด่านกั้น ----
   let r = await post('/training/knowledge/save', 'key=' + KEY + '&title=หัวข้อทดสอบ&body=เนื้อหา');
@@ -131,7 +138,6 @@ async function main() {
 
   console.log('\nRESULT ' + pass + ' passed / ' + fail + ' failed');
   srv.close();
-  fs.rmSync(store.DATA_DIR, { recursive: true, force: true });
   process.exit(fail ? 1 : 0);
 }
 

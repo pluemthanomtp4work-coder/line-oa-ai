@@ -1,8 +1,8 @@
-{
+﻿{
   "name": "line-oa-ai",
   "version": "1.0.0",
   "private": true,
-  "description": "บอท LINE OA ตอบด้วย Gemini + หน้าหลังบ้าน 8 หน้า (Node + Express, ต่อ HTML เป็นสตริง ไม่มี build step)",
+  "description": "เธเธญเธ— LINE OA เธ•เธญเธเธ”เนเธงเธข Gemini + เธซเธเนเธฒเธซเธฅเธฑเธเธเนเธฒเธ 8 เธซเธเนเธฒ (Node + Express, เธ•เนเธญ HTML เน€เธเนเธเธชเธ•เธฃเธดเธ เนเธกเนเธกเธต build step)",
   "main": "src/index.js",
   "engines": {
     "node": ">=18"
@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "init": "node -e \"require('./src/env').load();require('./src/store').init().then(m=>console.log('พร้อมแล้ว:',m.join(', ')||'ไฟล์ข้อมูลครบอยู่แล้ว'))\"",
+    "init": "node -e \"require('./src/env').load();require('./src/store').init().then(m=>console.log('เธเธฃเนเธญเธกเนเธฅเนเธง:',m.join(', ')||'เนเธเธฅเนเธเนเธญเธกเธนเธฅเธเธฃเธเธญเธขเธนเนเนเธฅเนเธง'))\"",
     "test": "node test/admin.smoke.js",
     "shot": "node test/screenshot.js"
   },
