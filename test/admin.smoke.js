@@ -4,8 +4,12 @@
 // ต้องตั้ง env ให้ครบ "ก่อน" require ไฟล์ใน src/ เพราะ adminGate/store อ่านค่าตอนโหลดโมดูล
 process.env.ADMIN_KEY = 'test-key-123';
 process.env.DATA_DIR = require('path').join(require('os').tmpdir(), 'line-oa-ai-smoke-' + process.pid);
-delete process.env.LINE_CHANNEL_SECRET;
-delete process.env.LINE_CHANNEL_ACCESS_TOKEN;
+// ตั้งเป็นค่าว่าง ไม่ใช่ delete — env.js จะเติมค่าจาก .env ให้เฉพาะคีย์ที่ "ไม่มีใน process.env"
+// ถ้า delete ทิ้ง พอเครื่องไหนมี .env ที่ใส่คีย์ LINE จริง เทสต์จะกลายเป็นคนละเคสทันที
+// (เคยแตกมาแล้ว: คาด 503 "ยังไม่ได้ตั้งค่า" แต่ได้ 401 "ลายเซ็นผิด")
+process.env.LINE_CHANNEL_SECRET = '';
+process.env.LINE_CHANNEL_ACCESS_TOKEN = '';
+process.env.GEMINI_API_KEY = '';       // กันเทสต์เผลอยิง API จริงแล้วเสียเงิน
 process.env.LINE_ADMIN_USER_IDS = 'Uadmin0000';
 
 const fs = require('fs');
