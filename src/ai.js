@@ -1,48 +1,71 @@
-// เรียก Claude + คิดค่าใช้จ่ายต่อ call แล้ว log ลง aiLogs
+// เรียก Gemini + คิดค่าใช้จ่ายต่อ call แล้ว log ลง aiLogs
+// ยิง REST ตรง ไม่ใช้ SDK — fetch มากับ Node 18+ อยู่แล้ว ทำให้ dependency เหลือ express ตัวเดียว
+//
 // ค่าใช้จ่ายคิดเป็น USD ก่อนตามเรตของ "โมเดลที่ใช้จริงใน call นั้น" แล้วค่อยแปลงบาทตอนแสดงผล
-// เรตเดียวรวมทุกโมเดลคลาดเคลื่อนหลายเท่า (opus vs haiku ต่างกัน 5 เท่า) → ต้องเก็บ model ลง log ด้วย
+// เรตเดียวรวมทุกโมเดลคลาดเคลื่อนหลายเท่า (3.5-flash vs 2.5-flash-lite ต่างกัน 15 เท่าฝั่ง input)
+// → ต้องเก็บ model ลง log ด้วยเสมอ
 const store = require('./store');
 
-// USD ต่อ 1M tokens — ตารางเรต (อัปเดตเมื่อ 2026-06-24)
-// cacheWrite = 1.25x input, cacheRead = 0.1x input ตามสูตรมาตรฐานของ prompt caching
+const API = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+// USD ต่อ 1M tokens (เช็คจาก ai.google.dev/gemini-api/docs/pricing เมื่อ 2026-09-19)
+// หมายเหตุ: เรตของตระกูล 3.8/3.7/3.6 Flash เป็นราคาโปรโมชันถึง 31 ธ.ค. 2026 — ครบกำหนดแล้วต้องมาแก้ที่นี่
 const RATES = {
-  'claude-opus-5': { in: 5.0, out: 25.0 },
-  'claude-opus-4-8': { in: 5.0, out: 25.0 },
-  'claude-sonnet-5': { in: 2.0, out: 10.0 },
-  'claude-haiku-4-5': { in: 1.0, out: 5.0 },
-  'claude-fable-5-1': { in: 10.0, out: 50.0 },
+  'gemini-3.8-flash': { in: 0.75, out: 3.75 },
+  'gemini-3.7-flash': { in: 0.75, out: 3.75 },
+  'gemini-3.6-flash': { in: 0.75, out: 3.75 },
+  'gemini-3.5-flash': { in: 1.50, out: 9.00 },
+  'gemini-3.5-flash-lite': { in: 0.30, out: 2.50 },
+  'gemini-3.1-pro-preview': { in: 2.00, out: 12.00 },
+  'gemini-2.5-flash': { in: 0.30, out: 2.50 },
+  'gemini-2.5-flash-lite': { in: 0.10, out: 0.40 },
+  'gemini-2.5-pro': { in: 1.25, out: 10.00 },
 };
-const DEFAULT_MODEL = process.env.AI_MODEL || 'claude-opus-5';
+const DEFAULT_MODEL = process.env.AI_MODEL || 'gemini-3.8-flash';
+// โมเดลสำรอง — ใช้เมื่อตัวหลักตอบ 503/429 ติดกันจนครบ retry
+// เจอจริงตอนทดสอบ: gemini-3.8-flash คืน 503 "high demand" สองครั้งติด
+// ถ้าไม่มีทางสำรอง ผู้ใช้ใน LINE จะเงียบใส่ทุกครั้งที่ฝั่ง Google แน่น
+const FALLBACK_MODEL = process.env.AI_MODEL_FALLBACK || 'gemini-3.5-flash-lite';
 const USD_THB = Number(process.env.USD_THB || 36.5);
+const RETRY_STATUS = new Set([429, 500, 502, 503, 504]);
+
+const hasKey = () => Boolean(process.env.GEMINI_API_KEY);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * คิดเงินจาก usage ที่ API คืนมา
- * หมายเหตุ: output_tokens ของ Anthropic รวม thinking tokens มาให้แล้ว — ไม่ต้องบวกเพิ่มเอง
- * (ต่างจาก Gemini ที่ candidate_tokens ไม่นับ thinking แล้วต้องคิด total − prompt)
+ * แยก token ที่ใช้จริงออกจาก usageMetadata
+ *
+ * output = totalTokenCount − promptTokenCount  ← ห้ามใช้ candidatesTokenCount
+ * เหตุผล: Gemini คิดเงิน thinking tokens ที่เรต output แต่การนับต่างกันตามแพลตฟอร์ม
+ *   - Gemini API: candidatesTokenCount รวม thinking
+ *   - Vertex AI : candidatesTokenCount ไม่รวม thinking
+ *   - บางโมเดลไม่คืน thoughtsTokenCount มาเลย (bug ที่มีรายงานอยู่)
+ * การลบ total − prompt ถูกต้องทั้งสามกรณี เพราะ total รวมทุกอย่างเสมอ
+ */
+function splitUsage(usage) {
+  const u = usage || {};
+  const prompt = Number(u.promptTokenCount || 0);
+  const total = Number(u.totalTokenCount || 0);
+  const cached = Number(u.cachedContentTokenCount || 0);
+  // total ที่หายไป (บาง error path ไม่คืน usage) → กันไม่ให้ได้เลขติดลบ
+  const output = Math.max(0, total - prompt);
+  return { prompt, output, cached, thoughts: Number(u.thoughtsTokenCount || 0) };
+}
+
+/**
+ * คิดเงิน — cached tokens คิดที่เรต input เต็ม จึงเป็น "เพดานบน" ไม่ใช่ตัวเลขเป๊ะ
+ * (implicit caching ของ Google ลดราคาให้ แต่ส่วนลดไม่โผล่ใน usageMetadata ให้คำนวณย้อนได้)
+ * ตัวเลขในหน้า Dashboard จึงสูงกว่าบิลจริงได้ ไม่ใช่ต่ำกว่า — ฝั่งที่ปลอดภัยกว่า
  */
 function costUsd(model, usage) {
   const r = RATES[model] || RATES[DEFAULT_MODEL] || { in: 0, out: 0 };
-  const u = usage || {};
-  const inTok = Number(u.input_tokens || 0);
-  const cWrite = Number(u.cache_creation_input_tokens || 0);
-  const cRead = Number(u.cache_read_input_tokens || 0);
-  const outTok = Number(u.output_tokens || 0);
-  return ((inTok * r.in) + (cWrite * r.in * 1.25) + (cRead * r.in * 0.1) + (outTok * r.out)) / 1e6;
+  const t = splitUsage(usage);
+  return ((t.prompt * r.in) + (t.output * r.out)) / 1e6;
 }
-
-let client = null;
-function getClient() {
-  if (client) return client;
-  // require แบบ lazy — ให้หน้า admin เปิดได้แม้ยังไม่ npm install @anthropic-ai/sdk
-  const Anthropic = require('@anthropic-ai/sdk');
-  client = new Anthropic();   // อ่าน ANTHROPIC_API_KEY จาก env เอง ห้าม hardcode
-  return client;
-}
-const hasKey = () => Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 
 /**
  * ถามบอท — คืน { text, model, usage, costUsd, logId }
- * ทุก call ถูก log ไม่ว่าจะสำเร็จหรือไม่ เพื่อให้หน้า Dashboard นับได้ตรง
+ * ทุก call ถูก log ไม่ว่าสำเร็จหรือไม่ เพื่อให้หน้า Dashboard นับได้ตรง
  * opts: { system, history, feature, userId, model, maxTokens }
  */
 async function ask(text, opts = {}) {
@@ -56,48 +79,95 @@ async function ask(text, opts = {}) {
   };
 
   if (!hasKey()) {
-    const rec = await logCall({ ...base, ok: false, error: 'ยังไม่ได้ตั้ง ANTHROPIC_API_KEY' });
-    const e = new Error('ยังไม่ได้ตั้ง ANTHROPIC_API_KEY ใน .env');
+    const rec = await logCall({ ...base, ok: false, error: 'ยังไม่ได้ตั้ง GEMINI_API_KEY' });
+    const e = new Error('ยังไม่ได้ตั้ง GEMINI_API_KEY ใน .env');
     e.logId = rec.id;
     throw e;
   }
 
-  try {
-    const res = await getClient().messages.create({
-      model,
-      max_tokens: Number(opts.maxTokens || 4096),
-      // adaptive thinking — ให้โมเดลตัดสินใจเองว่าจะคิดลึกแค่ไหน (budget_tokens ถูกถอดออกแล้ว)
-      thinking: { type: 'adaptive' },
-      // effort low สำหรับแชทตอบไว — งานที่ต้องคิดหนักค่อยส่ง effort สูงมาทาง opts
-      output_config: { effort: opts.effort || 'low' },
-      // system เป็นก้อนนิ่ง + cache_control → prompt ยาว (คลังความรู้) ไม่ถูกคิดเงินเต็มทุกครั้ง
-      system: opts.system
-        ? [{ type: 'text', text: opts.system, cache_control: { type: 'ephemeral' } }]
-        : undefined,
-      messages: [...(opts.history || []), { role: 'user', content: String(text || '') }],
-    });
+  const body = {
+    contents: [
+      ...(opts.history || []),
+      { role: 'user', parts: [{ text: String(text || '') }] },
+    ],
+    generationConfig: { maxOutputTokens: Number(opts.maxTokens || 2048), temperature: 0.4 },
+  };
+  // systemInstruction เป็นก้อนนิ่ง (persona + คลังความรู้) วางแยกจาก contents
+  // implicit caching ของ Google จับ prefix ที่ซ้ำเองได้เมื่อส่วนหัวไม่ขยับ
+  if (opts.system) body.systemInstruction = { parts: [{ text: opts.system }] };
 
-    // stop_reason 'refusal' มาแบบ HTTP 200 — ต้องเช็คก่อนอ่าน content ไม่งั้นได้ข้อความว่าง
-    if (res.stop_reason === 'refusal') {
+  try {
+    const { data, usedModel } = await callWithRetry(model, body);
+
+    const usd = costUsd(usedModel, data.usageMetadata);
+    const t = splitUsage(data.usageMetadata);
+    base.model = usedModel;        // log โมเดลที่ใช้จริง ไม่ใช่ตัวที่ขอไป — ไม่งั้นค่าใช้จ่ายคิดผิดเรต
+
+    // ถูกบล็อกตั้งแต่ชั้น prompt — ไม่มี candidates กลับมาเลย ต้องเช็คก่อนอ่าน content
+    const blocked = data.promptFeedback && data.promptFeedback.blockReason;
+    const cand = (data.candidates || [])[0];
+    if (blocked || !cand) {
       const rec = await logCall({
-        ...base, ok: false, error: 'refusal:' + ((res.stop_details && res.stop_details.category) || '?'),
-        usage: res.usage, costUsd: costUsd(model, res.usage), ms: Date.now() - started,
+        ...base, ok: false, error: 'blocked:' + (blocked || 'no-candidate'),
+        usage: data.usageMetadata, costUsd: usd, ms: Date.now() - started,
       });
-      return { text: 'ขอโทษครับ คำถามนี้ผมตอบให้ไม่ได้', model, refused: true, logId: rec.id, costUsd: 0 };
+      return { text: 'ขอโทษครับ คำถามนี้ผมตอบให้ไม่ได้', model, refused: true, logId: rec.id, costUsd: usd };
+    }
+    // ตอบมาแต่ถูกตัดกลางคัน — MAX_TOKENS ได้ข้อความไม่จบ, SAFETY ได้ข้อความว่าง
+    if (cand.finishReason && !['STOP', 'MAX_TOKENS'].includes(cand.finishReason)) {
+      const rec = await logCall({
+        ...base, ok: false, error: 'finish:' + cand.finishReason,
+        usage: data.usageMetadata, costUsd: usd, ms: Date.now() - started,
+      });
+      return { text: 'ขอโทษครับ คำถามนี้ผมตอบให้ไม่ได้', model, refused: true, logId: rec.id, costUsd: usd };
     }
 
-    const out = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-    const usd = costUsd(model, res.usage);
-    const rec = await logCall({ ...base, ok: true, usage: res.usage, costUsd: usd, ms: Date.now() - started });
-    return { text: out, model, usage: res.usage, costUsd: usd, logId: rec.id };
+    const out = (cand.content && cand.content.parts || [])
+      .map((p) => p.text).filter(Boolean).join('\n').trim();
+
+    const rec = await logCall({ ...base, ok: true, usage: data.usageMetadata, costUsd: usd, ms: Date.now() - started });
+    return {
+      text: out || 'ขอโทษครับ ผมยังตอบคำถามนี้ไม่ได้',
+      model: usedModel, usage: data.usageMetadata, costUsd: usd, logId: rec.id,
+      truncated: cand.finishReason === 'MAX_TOKENS',
+      thoughtTokens: t.thoughts,
+    };
   } catch (e) {
     await logCall({ ...base, ok: false, error: String(e.message || e).slice(0, 300), ms: Date.now() - started });
     throw e;
   }
 }
 
+/**
+ * ยิง API พร้อม retry — 429/5xx เป็นอาการชั่วคราวของฝั่ง Google ไม่ใช่คำขอเราผิด
+ * ลองตัวหลัก 3 ครั้ง (หน่วง 0.4s → 1.2s) ถ้ายังไม่ผ่านค่อยสลับไปโมเดลสำรองอีก 1 ครั้ง
+ * ส่วน 4xx อื่น (คีย์ผิด โมเดลไม่มีจริง prompt ใหญ่เกิน) โยนทันที — retry ไปก็ได้ผลเดิม
+ */
+async function callWithRetry(model, body) {
+  const plan = model === FALLBACK_MODEL ? [model] : [model, FALLBACK_MODEL];
+  let last;
+  for (const m of plan) {
+    const tries = m === model ? 3 : 1;
+    for (let i = 0; i < tries; i += 1) {
+      const res = await fetch(`${API}/${encodeURIComponent(m)}:generateContent`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+        body: JSON.stringify(body),
+      });
+      const raw = await res.text();
+      if (res.ok) return { data: JSON.parse(raw), usedModel: m };
+
+      last = new Error(`Gemini ${res.status}: ${raw.slice(0, 200)}`);
+      if (!RETRY_STATUS.has(res.status)) throw last;      // ผิดที่เรา ลองใหม่ก็เหมือนเดิม
+      if (i < tries - 1) await sleep(400 * (i + 1) ** 2);
+    }
+    if (m !== FALLBACK_MODEL) console.warn(`[ai] ${m} ไม่ตอบ (${last.message.slice(0, 60)}) — สลับไป ${FALLBACK_MODEL}`);
+  }
+  throw last;
+}
+
 async function logCall(row) {
-  const u = row.usage || {};
+  const t = splitUsage(row.usage);
   return store.insert('aiLogs', {
     userId: row.userId,
     feature: row.feature,
@@ -106,11 +176,11 @@ async function logCall(row) {
     error: row.error || null,
     ms: row.ms || 0,
     question: row.question || '',
-    promptTokens: Number(u.input_tokens || 0) + Number(u.cache_read_input_tokens || 0) + Number(u.cache_creation_input_tokens || 0),
-    outputTokens: Number(u.output_tokens || 0),
-    cacheReadTokens: Number(u.cache_read_input_tokens || 0),
+    promptTokens: t.prompt,
+    outputTokens: t.output,          // รวม thinking tokens แล้ว (total − prompt)
+    cacheReadTokens: t.cached,
     costUsd: Number(row.costUsd || 0),
   });
 }
 
-module.exports = { ask, costUsd, logCall, RATES, DEFAULT_MODEL, USD_THB, hasKey };
+module.exports = { ask, costUsd, splitUsage, logCall, RATES, DEFAULT_MODEL, USD_THB, hasKey };

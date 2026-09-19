@@ -66,7 +66,6 @@ async function reply(text, opts = {}) {
     system,
     userId: opts.userId || null,
     feature: opts.feature || 'chat',
-    effort: opts.effort,
   });
   return { text: out.text, via: 'ai', model: out.model, costUsd: out.costUsd, refused: out.refused };
 }

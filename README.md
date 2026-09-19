@@ -1,4 +1,4 @@
-# LINE OA-AI — บอท LINE ตอบด้วย Claude + หน้าหลังบ้าน 8 หน้า
+# LINE OA-AI — บอท LINE ตอบด้วย Gemini + หน้าหลังบ้าน 8 หน้า
 
 Node + Express.js ต่อ HTML เป็นสตริง — **ไม่มี build step ไม่มี React** แก้ไฟล์แล้วรีสตาร์ตเห็นผลทันที
 สร้างตามสูตร skill `sbu-myagent-builder` (โครง `page()` ดึงข้อมูล / `render(m)` สร้าง HTML ทุกหน้า)
@@ -18,7 +18,7 @@ cp .env.example .env
 | ตัวแปร | เอามาจากไหน |
 |---|---|
 | `ADMIN_KEY` | สุ่มเอง: `node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"` |
-| `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys |
+| `GEMINI_API_KEY` | aistudio.google.com → Get API key |
 | `LINE_CHANNEL_SECRET` / `LINE_CHANNEL_ACCESS_TOKEN` | LINE Developers Console → Messaging API |
 
 ```bash
@@ -54,7 +54,7 @@ npm run init && npm start
 | [adminGate.js](src/adminGate.js) | ด่าน `?key=` · hidden key input · PRG redirect + flash |
 | [adminUi.js](src/adminUi.js) | `esc()` การ์ดสถิติ กราฟแท่ง ตารางค้นหา โครง `shell()` |
 | [store.js](src/store.js) | ชั้นข้อมูล (ไฟล์ JSON ใน `data/`) — เปลี่ยนไป Postgres แก้แค่ไฟล์นี้ |
-| [ai.js](src/ai.js) | เรียก Claude + คิดค่าใช้จ่ายต่อ call แล้ว log |
+| [ai.js](src/ai.js) | เรียก Gemini + คิดค่าใช้จ่ายต่อ call แล้ว log |
 | [bot.js](src/bot.js) | สมองบอท — ประกอบ prompt จากความรู้/persona/memory + เช็คกฎก่อน |
 | [line.js](src/line.js) | ตรวจลายเซ็น webhook · ตอบ/push · โปรไฟล์ · rich menu |
 

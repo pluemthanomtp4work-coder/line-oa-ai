@@ -599,7 +599,7 @@ if (require.main === module) {
         console.log(`เปิดที่ http://localhost:${PORT}/admin?key=${process.env.ADMIN_KEY || '<ยังไม่ได้ตั้ง ADMIN_KEY>'}`);
         if (!gate.ADMIN_KEY) console.warn('⚠️  ยังไม่ได้ตั้ง ADMIN_KEY ใน .env — หน้าหลังบ้านจะตอบ 503');
         if (!line.configured()) console.warn('⚠️  ยังไม่ได้ตั้งค่า LINE — webhook จะตอบ 503');
-        if (!ai.hasKey()) console.warn('⚠️  ยังไม่ได้ตั้ง ANTHROPIC_API_KEY — บอทจะตอบไม่ได้');
+        if (!ai.hasKey()) console.warn('⚠️  ยังไม่ได้ตั้ง GEMINI_API_KEY — บอทจะตอบไม่ได้');
       });
     })
     .catch((e) => { console.error('เริ่มระบบไม่ได้:', e); process.exit(1); });
