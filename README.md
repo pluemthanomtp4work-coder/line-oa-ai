@@ -59,6 +59,34 @@ npm run init && npm start
 | [bot.js](src/bot.js) | สมองบอท — ประกอบ prompt จากความรู้/persona/memory + เช็คกฎก่อน |
 | [line.js](src/line.js) | ตรวจลายเซ็น webhook · ตอบ/push · โปรไฟล์ · rich menu |
 
+## ขึ้นโฮสต์จริง
+
+ใช้โฮสต์ที่รัน Node ได้ (Render / Railway / Fly.io) — **ไม่ใช่ Cloudflare Workers** เพราะโค้ดนี้เป็น
+Express ซึ่งต้องการ Node HTTP server ที่ Workers ไม่มีให้
+
+### Render (มี [render.yaml](render.yaml) ให้แล้ว)
+
+1. **New → Blueprint** ชี้มาที่ repo นี้ Render จะอ่าน `render.yaml` เอง
+2. กรอกค่าที่เป็นความลับ 8 ตัวที่มันถาม (ตัวที่ตั้ง `sync: false` ไว้)
+3. รอ build เสร็จ จะได้ URL หน้าตา `https://line-oa-ai.onrender.com`
+4. เอา `https://<โดเมนที่ได้>/line/webhook` ไปใส่ใน LINE Developers Console → Messaging API → Webhook URL
+   แล้วกด **Verify** ต้องขึ้นเขียว
+5. เปิด `https://<โดเมนที่ได้>/admin?key=<ADMIN_KEY>` เพื่อเช็คว่าหน้าหลังบ้านขึ้น
+
+### ก่อน deploy ครั้งแรก
+
+- **สุ่ม `ADMIN_KEY` ใหม่** อย่าใช้ตัวเดียวกับตอน dev — `?key=` ติดไปกับ URL และ log ของ proxy
+  ```
+  node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
+  ```
+- **`FILE_SIGN_SECRET` ตั้งแยกจาก `ADMIN_KEY`** ไม่งั้นเปลี่ยน ADMIN_KEY ทีเดียวลิงก์ไฟล์ที่แจกไว้ตายหมด
+- **`LINE_ADMIN_USER_IDS`** ต้องใส่ ไม่งั้นไม่มีใครเป็นแอดมิน และทุกคนโดนลด/บล็อกได้จากหน้าเว็บ
+
+### ข้อควรระวังเรื่องแผนโฮสต์
+
+แผนฟรีของ Render/Railway **หลับเมื่อไม่มีทราฟฟิก** ตื่นใช้เวลา 30–60 วินาที ซึ่งนานกว่าที่ LINE รอ
+→ ข้อความแรกหลังหลับจะหายเงียบๆ ผู้ใช้เห็นว่าบอทไม่ตอบ ถ้าใช้งานจริงต้องใช้แผนที่ไม่หลับ
+
 ## เทสต์
 
 ```bash

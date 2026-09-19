@@ -1,0 +1,57 @@
+# Blueprint สำหรับ Render — เอาไปวางแล้วกด "New > Blueprint" ชี้มาที่ repo นี้
+# ทุกค่าที่เป็นความลับตั้ง sync: false = Render จะถามในหน้าเว็บ ไม่เก็บลง repo
+services:
+  - type: web
+    name: line-oa-ai
+    runtime: node
+    region: singapore          # ใกล้ผู้ใช้ไทยที่สุด และอยู่โซนเดียวกับ Supabase (ap-southeast-1)
+
+    # ⚠️ แผนฟรีของ Render จะ "หลับ" เมื่อไม่มีทราฟฟิก 15 นาที แล้วตื่นใช้เวลา ~30-60 วินาที
+    # LINE รอ webhook ไม่เกินไม่กี่วินาที → ข้อความแรกหลังหลับจะหาย ผู้ใช้เห็นบอทเงียบ
+    # บอทที่ใช้งานจริงต้องใช้แผนที่ไม่หลับ
+    plan: starter
+
+    buildCommand: npm ci
+    startCommand: npm start
+
+    # ใช้ /healthz เพราะมันไม่ต้องมี ADMIN_KEY และไม่แตะฐานข้อมูล
+    # ถ้าชี้ไปที่ /admin จะได้ 401 แล้ว Render เข้าใจว่าแอปพัง
+    healthCheckPath: /healthz
+
+    autoDeploy: true
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+
+      # ---- ความลับ: กรอกในหน้า Render ตอน deploy ครั้งแรก ----
+      - key: ADMIN_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_ADMIN_USER_IDS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: FILE_SIGN_SECRET
+        sync: false
+
+      # ---- ค่าที่ไม่ลับ ----
+      - key: AI_MODEL
+        value: gemini-3.8-flash
+      - key: AI_MODEL_FALLBACK
+        value: gemini-3.5-flash-lite
+      - key: USD_THB
+        value: "36.5"
+      - key: SUPABASE_BUCKET
+        value: uploads
+      - key: MAX_UPLOAD_MB
+        value: "8"
+      - key: FILE_LINK_TTL_MIN
+        value: "15"
