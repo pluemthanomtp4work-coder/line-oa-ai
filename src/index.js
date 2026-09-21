@@ -8,6 +8,7 @@ const path = require('path');
 const store = require('./store');
 const gate = require('./adminGate');
 const mp = require('./multipart');
+const body = require('./bodyParser');
 const line = require('./line');
 const ai = require('./ai');
 const bot = require('./bot');
@@ -28,11 +29,13 @@ const MAX_UPLOAD = Number(process.env.MAX_UPLOAD_MB || 8) * 1024 * 1024;
 const ADMIN_IDS = String(process.env.LINE_ADMIN_USER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean);
 
 // ---------- body parsers ----------
-// webhook ต้องได้ raw buffer ไว้ตรวจลายเซ็น — JSON.stringify ของ object ที่ parse แล้วให้ byte ไม่ตรงเดิม
-app.post('/line/webhook', express.raw({ type: '*/*', limit: '1mb' }), onWebhook);
+// ใช้ของเราเอง ไม่ใช่ express.urlencoded/raw — เหตุผลอยู่ในหัวไฟล์ src/bodyParser.js
+// ตัวเดียวจบทั้งสามแบบ: ฟอร์ม -> object, multipart -> Buffer (ส่งต่อ mp), webhook -> Buffer ดิบ
 // ขาดบรรทัดนี้ req.body = undefined → POST ทุกอันเด้ง 401 เพราะหา key ในฟอร์มไม่เจอ
-app.use(express.urlencoded({ extended: false, limit: '2mb' }));
-app.use(express.raw({ type: 'multipart/form-data', limit: MAX_UPLOAD }), mp.middleware);
+app.use(body.middleware({ form: 2 * 1024 * 1024, upload: MAX_UPLOAD }));
+app.use(mp.middleware);
+// webhook ต้องได้ raw buffer ไว้ตรวจลายเซ็น — JSON.stringify ของ object ที่ parse แล้วให้ byte ไม่ตรงเดิม
+app.post('/line/webhook', onWebhook);
 
 // ---------- helpers ----------
 const nowLabel = () => new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
@@ -123,11 +126,20 @@ async function saveUpload(file, folderId) {
 // ================= LINE webhook =================
 async function onWebhook(req, res) {
   if (!line.configured()) return res.status(503).send('ยังไม่ได้ตั้งค่า LINE');
-  if (!line.verify(req.body, req.headers['x-line-signature'])) return res.status(401).send('bad signature');
+  // ใช้ rawBody ไม่ใช่ body — rawBody คือ byte ที่รับมาเป๊ะ ไม่มี middleware ตัวไหนแตะได้
+  // ลายเซ็น LINE คิดจาก byte ดิบ ผิดไปตัวเดียวก็ไม่ผ่าน
+  const raw = req.rawBody;
+  if (!Buffer.isBuffer(raw)) return res.status(400).send('no body');
+  // async handler ใน Express 4 ถ้าโยน error จะไม่มีใครจับ → request ค้างจน runtime ตัดทิ้ง
+  // จึงต้องห่อทุกอย่างที่อาจโยนได้ไว้ ไม่ให้หลุดออกไปเงียบๆ
+  let ok = false;
+  try { ok = line.verify(raw, req.headers['x-line-signature']); }
+  catch (e) { console.error('[webhook] ตรวจลายเซ็นไม่ได้:', e.message); }
+  if (!ok) return res.status(401).send('bad signature');
   // ตอบ 200 ให้ LINE ทันที แล้วค่อยทำงานต่อ — ช้าเกิน 1 วินาที LINE จะยิงซ้ำ
   res.status(200).end();
   let payload;
-  try { payload = JSON.parse(req.body.toString('utf8')); }
+  try { payload = JSON.parse(raw.toString('utf8')); }
   catch (e) { return console.error('[webhook] json พัง:', e.message); }
   line.handleEvents(payload.events).catch((e) => console.error('[webhook]', e));
   return undefined;

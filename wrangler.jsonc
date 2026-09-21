@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "line-oa-ai",
+  "main": "worker.js",
+
+  // ต้อง >= 2025-08-15 ถึงจะมี node:http ให้ Express เกาะ
+  // ตั้งเป็น 2026-08-04 ซึ่งเป็นวันที่ nodejs_compat เปิดเป็นค่าเริ่มต้น
+  "compatibility_date": "2026-08-04",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // body-parser พังบน Workers ตอน bundle (iconv-lite) — แทนด้วย stub ดูเหตุผลใน shims/body-parser.js
+  "alias": { "body-parser": "./shims/body-parser.js" },
+
+  "observability": { "enabled": true },
+
+  // ค่าที่ไม่เป็นความลับ วางในนี้ได้ (ไฟล์นี้อยู่ใน git)
+  // ⚠️ ความลับทั้ง 8 ตัวต้องใส่ผ่าน `wrangler secret put <NAME>` หรือหน้า dashboard เท่านั้น
+  //    ห้ามใส่ใน vars เด็ดขาด เพราะไฟล์นี้ถูก commit ขึ้น GitHub
+  "vars": {
+    "AI_MODEL": "gemini-3.8-flash",
+    "AI_MODEL_FALLBACK": "gemini-3.5-flash-lite",
+    "USD_THB": "36.5",
+    "SUPABASE_BUCKET": "uploads",
+    "MAX_UPLOAD_MB": "8",
+    "FILE_LINK_TTL_MIN": "15"
+  }
+}

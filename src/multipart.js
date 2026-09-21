@@ -49,7 +49,12 @@ function parse(buf, contentType) {
 
 /** middleware: ใช้กับ route ที่มี enctype="multipart/form-data" — ยัดผลลง req.body / req.files */
 function middleware(req, res, next) {
-  if (!Buffer.isBuffer(req.body)) return next();
+  // ต้องเช็ค content-type ด้วย ไม่ใช่แค่ "body เป็น Buffer"
+  // webhook ของ LINE ก็ได้ Buffer เหมือนกัน (JSON ดิบไว้ตรวจลายเซ็น) ถ้าไม่เช็คตรงนี้
+  // middleware นี้จะเอา JSON ไป parse เป็น multipart พัง แล้วเขียนทับ req.body = {}
+  // → createHmac().update({}) โยน error → request ค้างไม่มีวันตอบ (เคยเกิดจริง)
+  const type = String(req.headers['content-type'] || '');
+  if (!Buffer.isBuffer(req.body) || !type.includes('multipart/form-data')) return next();
   try {
     const out = parse(req.body, req.headers['content-type']);
     req.body = out.fields;

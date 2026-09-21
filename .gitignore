@@ -6,3 +6,9 @@ test/out/
 
 # ตั้งค่าเฉพาะเครื่องของแต่ละคน ไม่ใช่ของโปรเจกต์
 .claude/settings.local.json
+
+# ความลับสำหรับ wrangler dev ตอนพัฒนา ห้ามขึ้น git
+.dev.vars
+
+# แคช/bundle ของ wrangler ตอน dev — สร้างใหม่ได้เสมอ
+.wrangler/

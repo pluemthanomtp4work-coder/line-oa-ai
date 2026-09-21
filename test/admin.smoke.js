@@ -136,6 +136,25 @@ async function main() {
   r = await fetch(base + '/line/webhook', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
   check('webhook ที่ยังไม่ตั้งค่า -> 503', r.status === 503, 'got ' + r.status);
 
+  // ---- webhook ที่ตั้งค่าแล้ว: ต้องไปถึงบรรทัดตรวจลายเซ็นจริง ----
+  // เคสข้างบนตอบ 503 ก่อนถึงการตรวจลายเซ็นเสมอ เส้นทางนี้เลยไม่เคยถูกรัน
+  // แล้วบั๊ก "multipart เขียนทับ body ของ webhook จน request ค้าง" ก็หลุดผ่านมาได้เพราะแบบนี้
+  process.env.LINE_CHANNEL_SECRET = 'test-secret';
+  process.env.LINE_CHANNEL_ACCESS_TOKEN = 'test-token';
+  const crypto = require('crypto');
+  const hookBody = '{"destination":"Uxxxx","events":[]}';   // แบบเดียวกับที่ปุ่ม Verify ของ LINE ส่ง
+  const sign = (b) => crypto.createHmac('sha256', 'test-secret').update(b).digest('base64');
+  const hook = (b, sig) => fetch(base + '/line/webhook', {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-line-signature': sig }, body: b,
+    signal: AbortSignal.timeout(5000),     // ค้างเกิน 5 วิ = บั๊กเดิมกลับมา ให้ fail ไม่ใช่รอไปตลอด
+  }).then((x) => x.status).catch((e) => 'ค้าง/' + e.name);
+
+  check('webhook ลายเซ็นถูก -> 200', (await hook(hookBody, sign(hookBody))) === 200);
+  check('webhook ลายเซ็นผิด -> 401 (ไม่ค้าง)', (await hook(hookBody, 'AAAA')) === 401);
+  check('webhook body ถูกแก้ -> 401', (await hook(hookBody.replace('xxxx', 'xxxy'), sign(hookBody))) === 401);
+  process.env.LINE_CHANNEL_SECRET = '';
+  process.env.LINE_CHANNEL_ACCESS_TOKEN = '';
+
   console.log('\nRESULT ' + pass + ' passed / ' + fail + ' failed');
   srv.close();
   process.exit(fail ? 1 : 0);

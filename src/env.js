@@ -1,10 +1,18 @@
 // โหลด .env เอง — เล็กเกินกว่าจะลง dependency เพิ่ม
 // กฎ: ค่าที่ตั้งไว้ใน environment จริงอยู่แล้วชนะเสมอ (เช่นบน production ที่ตั้งผ่าน panel)
-const fs = require('fs');
-const path = require('path');
-
+//
+// บน Cloudflare Workers ไม่มีไฟล์ระบบและไม่มี .env — ค่ามาจาก vars/secrets ผ่าน process.env อยู่แล้ว
+// ฟังก์ชันนี้จึงต้องเงียบและคืน false เฉยๆ ห้ามโยน error ไม่งั้นแอปไม่บูตบน Workers
 function load(file) {
-  const p = file || path.join(__dirname, '..', '.env');
+  let fs; let path;
+  try {
+    // require ใน try เพราะบางรันไทม์ไม่มีโมดูลพวกนี้ให้เลย
+    fs = require('fs');
+    path = require('path');
+  } catch { return false; }
+
+  let p;
+  try { p = file || path.join(__dirname, '..', '.env'); } catch { return false; }
   let raw;
   try { raw = fs.readFileSync(p, 'utf8'); } catch { return false; }
   for (const line of raw.split(/\r?\n/)) {
