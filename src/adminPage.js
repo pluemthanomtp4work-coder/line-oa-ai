@@ -9,12 +9,14 @@ const IDS = { body: 'ubody', search: 'usearch', more: 'umore', count: 'ucount' }
 async function page(deps, query = {}) {
   // ทุก query มี .catch ของตัวเอง — แหล่งเดียวล่มต้องไม่ทำให้หน้า 500 ทั้งหน้า
   // null = ยังอ่านไม่ได้/ยังไม่ init · [] = อ่านได้แต่ยังไม่มีข้อมูล (คนละความหมาย)
-  const [users, logs, settings, lineQuota] = await Promise.all([
+  const [users, logs, settings, lineQuota, forms] = await Promise.all([
     deps.listUsers().catch(() => null),
     deps.listAiLogs().catch(() => null),
     deps.settings().catch(() => ({})),
     deps.lineQuota ? deps.lineQuota().catch(() => null) : Promise.resolve(null),
+    deps.listFormSubmissions ? deps.listFormSubmissions().catch(() => null) : Promise.resolve(null),
   ]);
+  const bkk = (d, o) => new Date(d).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', ...o });
 
   const userRows = Array.isArray(users) ? users : [];
   const logRows = Array.isArray(logs) ? logs : [];
@@ -80,6 +82,19 @@ async function page(deps, query = {}) {
       ok: r.ok !== false, err: r.error || '',
       thb: Number(r.costUsd || 0) * rate,
     })),
+    forms: {
+      ready: Array.isArray(forms),
+      hookOk: Boolean(deps.formHookOk),
+      pending: (forms || []).filter((f) => f.notified !== true).length,
+      total: (forms || []).length,
+      lastSent: settings.formDigestAt ? bkk(settings.formDigestAt, { dateStyle: 'medium', timeStyle: 'short' }) : '',
+      recent: (forms || []).slice(-10).reverse().map((f) => ({
+        when: bkk(f.submittedAt || f.createdAt, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        form: f.formTitle || '-',
+        first: (f.answers || []).slice(0, 2).map((x) => `${x.q}: ${x.a}`).join(' · '),
+        notified: f.notified === true,
+      })),
+    },
     nowLabel: deps.nowLabel(),
   });
 }
@@ -188,6 +203,24 @@ function render(m) {
         <button class="btn" type="submit">บันทึก</button>
         ${diff == null ? '' : `<span class="dim" style="margin-left:10px">ส่วนต่างจากยอดที่ log ไว้: <b>${diff >= 0 ? '+' : ''}฿${u.money(diff)}</b></span>`}
       </form>
+    </details>
+
+    <details class="panel fold"${m.forms.pending ? ' open' : ''}>
+      <summary><h3>📝 Google Form <span class="cnt">${m.forms.ready ? `${u.n(m.forms.pending)} รอสรุป / ${u.n(m.forms.total)} ทั้งหมด` : 'อ่านไม่ได้'}</span></h3></summary>
+      <div class="sub" style="margin-top:10px">${m.forms.hookOk
+    ? `สรุปส่งหาแอดมินทุกวัน 08:00 น. — วันไหนไม่มีคำตอบใหม่ก็ไม่ส่ง ไม่เสียโควต้า${m.forms.lastSent ? ` · ส่งล่าสุด ${u.esc(m.forms.lastSent)}` : ' · ยังไม่เคยส่ง'}`
+    : '⚠️ ยังไม่ได้ตั้ง FORM_HOOK_SECRET — endpoint รับฟอร์มจะตอบ 503'}</div>
+      ${m.forms.recent.length ? `<div class="tablescroll"><table>
+        <thead><tr><th>เวลา</th><th>ฟอร์ม</th><th>คำตอบ (2 ข้อแรก)</th><th class="num">สถานะ</th></tr></thead>
+        <tbody>${m.forms.recent.map((f) => `<tr>
+          <td class="dim">${u.esc(f.when)}</td><td>${u.esc(f.form)}</td>
+          <td class="dim">${u.esc(f.first.slice(0, 90))}</td>
+          <td class="num">${u.pill(f.notified ? 'สรุปแล้ว' : 'รอสรุป', f.notified ? 'on' : 'warn')}</td></tr>`).join('')}</tbody>
+      </table></div>` : '<div class="empty">ยังไม่มีคำตอบจากฟอร์ม</div>'}
+      ${m.forms.pending ? `<form method="post" action="/admin/forms/digest" style="margin-top:12px"
+        onsubmit="return confirm('ส่งสรุปตอนนี้?\\n\\nใช้โควต้า push แอดมินละ 1 ข้อความ\\nรายการที่ส่งแล้วจะไม่ถูกส่งซ้ำในรอบ 08:00')">
+        ${gate.keyInput()}<button class="btn gray" type="submit">📤 ส่งสรุป ${u.n(m.forms.pending)} รายการตอนนี้</button>
+      </form>` : ''}
     </details>
 
     <details class="panel fold">

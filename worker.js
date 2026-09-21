@@ -9,6 +9,7 @@ import { httpServerHandler } from 'cloudflare:node';
 import { waitUntil } from 'cloudflare:workers';
 import app from './src/index.js';
 import bg from './src/background.js';
+import formHook from './src/formHook.js';
 
 // ผูก waitUntil ก่อนรับรีเควสต์แรก — ไม่งั้นงานที่ webhook ส่งไปทำเบื้องหลัง
 // (ให้ AI คิดคำตอบแล้ว reply กลับ LINE) จะถูก Workers ตัดทิ้งทันทีที่ตอบ 200
@@ -21,4 +22,21 @@ const PORT = 8787;
 // หน้าเว็บแต่ละหน้ามี .catch ของตัวเองอยู่แล้ว ตารางพังจะขึ้นคำเตือนในหน้านั้นเอง
 app.listen(PORT);
 
-export default httpServerHandler({ port: PORT });
+// เอกสารไม่ได้ระบุว่า httpServerHandler คืนค่าเป็นอะไร จึงรองรับทั้งสองแบบ
+// และห่อเป็น object เองเพื่อเพิ่ม scheduled (cron) เข้าไปในตัวเดียวกันได้
+const http = httpServerHandler({ port: PORT });
+const fetchHandler = typeof http === 'function' ? http : http.fetch.bind(http);
+
+export default {
+  fetch: (request, env, ctx) => fetchHandler(request, env, ctx),
+
+  // Cron Trigger (ตั้งใน wrangler.jsonc) — ส่งสรุป Google Form วันละครั้ง
+  // ต้องผ่าน waitUntil ไม่งั้น invocation จบก่อนส่ง LINE เสร็จ แล้วสรุปหายเงียบๆ
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(
+      formHook.digest()
+        .then((r) => console.log('[digest]', JSON.stringify({ ...r, text: undefined })))
+        .catch((e) => console.error('[digest] ล้มเหลว:', e.message)),
+    );
+  },
+};

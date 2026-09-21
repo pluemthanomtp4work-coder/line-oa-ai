@@ -14,6 +14,7 @@ const line = require('./line');
 const ai = require('./ai');
 const bot = require('./bot');
 const signed = require('./signedLink');
+const formHook = require('./formHook');
 
 const dash = require('./adminPage');
 const training = require('./trainingPage');
@@ -37,6 +38,9 @@ app.use(body.middleware({ form: 2 * 1024 * 1024, upload: MAX_UPLOAD }));
 app.use(mp.middleware);
 // webhook ต้องได้ raw buffer ไว้ตรวจลายเซ็น — JSON.stringify ของ object ที่ parse แล้วให้ byte ไม่ตรงเดิม
 app.post('/line/webhook', onWebhook);
+// Google Form -> Apps Script -> ที่นี่ ไม่ผ่าน ADMIN_KEY แต่ต้องมีรหัสลับ FORM_HOOK_SECRET ใน header
+// ไม่ตรวจรหัส = ใครรู้ URL ก็ยัดข้อมูลปลอมเข้าสรุปที่ส่งหาแอดมินได้
+app.post('/hooks/google-form', onFormHook);
 
 // ---------- helpers ----------
 const nowLabel = () => new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
@@ -48,6 +52,8 @@ const deps = {
   listMemories: list('memories'), listFeedback: list('feedback'), listTemplates: list('templates'),
   listFolders: list('folders'), listFiles: list('files'), listHeaders: list('headers'),
   listRichMenus: list('richmenus'), listContacts: list('contacts'),
+  listFormSubmissions: list('formSubmissions'),
+  formHookOk: formHook.configured(),
   settings: () => store.settings(),
   lineQuota: async () => {
     if (!line.configured()) return null;
@@ -148,6 +154,17 @@ async function onWebhook(req, res) {
   return undefined;
 }
 
+async function onFormHook(req, res) {
+  if (!formHook.configured()) return res.status(503).json({ ok: false, error: 'ยังไม่ได้ตั้ง FORM_HOOK_SECRET' });
+  if (!formHook.sameSecret(req.headers['x-form-secret'])) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  let payload;
+  try { payload = JSON.parse((req.rawBody || Buffer.alloc(0)).toString('utf8')); }
+  catch { return res.status(400).json({ ok: false, error: 'body ต้องเป็น JSON' }); }
+  // async handler ใน Express 4 ห้ามปล่อย error หลุด ไม่งั้น request ค้าง (เคยเจอกับ webhook LINE)
+  try { return res.json({ ok: true, ...(await formHook.receive(payload)) }); }
+  catch (e) { return res.status(e.status || 500).json({ ok: false, error: e.message }); }
+}
+
 // ================= หน้าเว็บ =================
 pageRoute('/admin', dash, 'dash');
 pageRoute('/training', training, 'training');
@@ -187,6 +204,14 @@ action('/admin/settings/numbers', '/admin', async (req) => {
   if (String(b.billActualThb || '').trim() === '') await store.setSetting('billActualThb', null);
   else await store.setSetting('billActualThb', Number(b.billActualThb));
   return 'บันทึกตัวเลขแล้ว';
+});
+
+// ส่งสรุปฟอร์มทันทีไม่ต้องรอรอบ 08:00 — ใช้โควต้า push แอดมินละ 1 ข้อความ
+action('/admin/forms/digest', '/admin', async () => {
+  const r = await formHook.digest();
+  if (r.reason) return r.reason;
+  if (r.errors && r.errors.length) throw new Error(`ส่งได้ ${r.sent}/${r.recipients} คน: ${r.errors[0]}`);
+  return `ส่งสรุป ${r.items} รายการ ถึงแอดมิน ${r.sent} คนแล้ว`;
 });
 
 action('/admin/user/delete', '/admin', async (req) => {

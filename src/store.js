@@ -13,13 +13,14 @@ const sb = require('./supabase');
 const COLLECTIONS = [
   'users', 'aiLogs', 'knowledge', 'docs', 'rules', 'prompts', 'memories',
   'feedback', 'templates', 'folders', 'files', 'headers', 'richmenus', 'contacts', 'settings',
+  'formSubmissions',
 ];
 
 const TABLE = {
   users: 'users', aiLogs: 'ai_logs', knowledge: 'context', docs: 'docs', rules: 'rules',
   prompts: 'prompts', memories: 'memories', feedback: 'feedback', templates: 'templates',
   folders: 'folders', files: 'files', headers: 'headers', richmenus: 'richmenus',
-  contacts: 'contacts', settings: 'settings',
+  contacts: 'contacts', settings: 'settings', formSubmissions: 'form_submissions',
 };
 
 // context เก็บเป็นคอลัมน์จริง จึงต้องมีตัวแปลงชื่อฟิลด์ระหว่างโค้ด (body/docId) กับตาราง (content/doc_id)

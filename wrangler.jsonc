@@ -18,6 +18,10 @@
   // (แต่ละรีเควสต์ยิง Supabase 4-6 ครั้ง อยู่ที่เดียวกันจึงเร็วขึ้นด้วย)
   "placement": { "region": "aws:ap-southeast-1" },
 
+  // สรุป Google Form วันละครั้ง — cron ของ Cloudflare เป็นเวลา UTC เสมอ
+  // 01:00 UTC = 08:00 น. เวลาไทย (UTC+7 ไม่มี daylight saving จึงไม่เลื่อนตามฤดู)
+  "triggers": { "crons": ["0 1 * * *"] },
+
   "observability": { "enabled": true },
 
   // ค่าที่ไม่เป็นความลับ วางในนี้ได้ (ไฟล์นี้อยู่ใน git)

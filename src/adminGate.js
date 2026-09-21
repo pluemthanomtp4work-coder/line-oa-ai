@@ -2,7 +2,9 @@
 // GET  → key มาทาง query   POST → key มาทาง body (hidden input)
 // ADMIN_KEY อ่านจาก env เท่านั้น ห้าม hardcode ในโค้ด
 
-const ADMIN_KEY = process.env.ADMIN_KEY || '';
+// trim — ตั้ง secret ผ่าน PowerShell pipe (`"ค่า" | wrangler secret put`) ได้ \r ติดท้ายมาแบบมองไม่เห็น
+// ถ้าไม่ตัด คีย์ที่ถูกต้องจะโดน 401 ตลอด = ล็อกตัวเองออกจากหน้าหลังบ้าน (เจอจริงกับ FORM_HOOK_SECRET)
+const ADMIN_KEY = String(process.env.ADMIN_KEY || '').trim();
 
 // เทียบแบบ constant-time กันเดาคีย์ทีละตัวอักษรจากเวลาตอบ
 const crypto = require('crypto');

@@ -11,7 +11,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "init": "node -e \"require('./src/env').load();require('./src/store').init().then(r=>{console.log('driver:',r.driver);console.log(r.broken.length?'อ่านไม่ได้: '+r.broken.join(' | '):'ทุกตารางอ่านได้');process.exit(r.broken.length?1:0)})\"",
-    "test": "node test/admin.smoke.js && node test/ai.budget.js",
+    "test": "node test/admin.smoke.js && node test/ai.budget.js && node test/formhook.test.js",
     "shot": "node test/screenshot.js"
   },
   "dependencies": {
