@@ -15,6 +15,9 @@ function load(file) {
   try { p = file || path.join(__dirname, '..', '.env'); } catch { return false; }
   let raw;
   try { raw = fs.readFileSync(p, 'utf8'); } catch { return false; }
+  // ตัด BOM ทิ้ง — PowerShell 5.1 (`Set-Content -Encoding utf8`) กับ Notepad รุ่นเก่าใส่ให้เองเสมอ
+  // ถ้าไม่ตัด บรรทัดแรกที่เป็น ADMIN_KEY=... จะได้ชื่อคีย์ "﻿ADMIN_KEY" แล้วหายไปแบบเงียบๆ
+  if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
   for (const line of raw.split(/\r?\n/)) {
     const s = line.trim();
     if (!s || s.startsWith('#')) continue;

@@ -6,7 +6,13 @@
 //   1. Workers รองรับ node:http แล้ว (compat date >= 2025-08-15, เปิดเป็นค่าเริ่มต้นตั้งแต่ 2026-08-04)
 //   2. โค้ดนี้ไม่แตะไฟล์ระบบอีกแล้ว ข้อมูลทั้งหมดอยู่บน Supabase — Workers ไม่มีดิสก์ให้เขียน
 import { httpServerHandler } from 'cloudflare:node';
+import { waitUntil } from 'cloudflare:workers';
 import app from './src/index.js';
+import bg from './src/background.js';
+
+// ผูก waitUntil ก่อนรับรีเควสต์แรก — ไม่งั้นงานที่ webhook ส่งไปทำเบื้องหลัง
+// (ให้ AI คิดคำตอบแล้ว reply กลับ LINE) จะถูก Workers ตัดทิ้งทันทีที่ตอบ 200
+bg.setWaitUntil(waitUntil);
 
 const PORT = 8787;
 

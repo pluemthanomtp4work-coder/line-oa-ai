@@ -9,6 +9,7 @@ const store = require('./store');
 const gate = require('./adminGate');
 const mp = require('./multipart');
 const body = require('./bodyParser');
+const { background } = require('./background');
 const line = require('./line');
 const ai = require('./ai');
 const bot = require('./bot');
@@ -141,7 +142,9 @@ async function onWebhook(req, res) {
   let payload;
   try { payload = JSON.parse(raw.toString('utf8')); }
   catch (e) { return console.error('[webhook] json พัง:', e.message); }
-  line.handleEvents(payload.events).catch((e) => console.error('[webhook]', e));
+  // ต้องผ่าน background() — บน Workers ถ้าปล่อย promise ลอยไว้เฉยๆ จะถูกตัดทิ้งหลังตอบ 200
+  // แล้วบอทจะเงียบใส่ผู้ใช้โดยไม่มี error ให้เห็นเลย
+  background(() => line.handleEvents(payload.events), 'webhook');
   return undefined;
 }
 

@@ -11,13 +11,20 @@
   // body-parser พังบน Workers ตอน bundle (iconv-lite) — แทนด้วย stub ดูเหตุผลใน shims/body-parser.js
   "alias": { "body-parser": "./shims/body-parser.js" },
 
+  // ปักหมุดให้รันที่สิงคโปร์ — ไม่งั้น Workers เลือก data center ใกล้ผู้เรียกให้เอง
+  // เจอจริง: คำขอจากไทยบางครั้งออกไปทาง Hong Kong แล้ว Gemini ตอบ 400
+  // "User location is not supported for the API use." = บอทใช้ไม่ได้แบบสุ่มๆ
+  // สิงคโปร์เป็นประเทศที่ Gemini รองรับ และ Supabase ของโปรเจกต์นี้ก็อยู่ ap-southeast-1
+  // (แต่ละรีเควสต์ยิง Supabase 4-6 ครั้ง อยู่ที่เดียวกันจึงเร็วขึ้นด้วย)
+  "placement": { "region": "aws:ap-southeast-1" },
+
   "observability": { "enabled": true },
 
   // ค่าที่ไม่เป็นความลับ วางในนี้ได้ (ไฟล์นี้อยู่ใน git)
   // ⚠️ ความลับทั้ง 8 ตัวต้องใส่ผ่าน `wrangler secret put <NAME>` หรือหน้า dashboard เท่านั้น
   //    ห้ามใส่ใน vars เด็ดขาด เพราะไฟล์นี้ถูก commit ขึ้น GitHub
   "vars": {
-    "AI_MODEL": "gemini-3.8-flash",
+    "AI_MODEL": "gemini-3.1-flash-lite",
     "AI_MODEL_FALLBACK": "gemini-3.5-flash-lite",
     "USD_THB": "36.5",
     "SUPABASE_BUCKET": "uploads",
