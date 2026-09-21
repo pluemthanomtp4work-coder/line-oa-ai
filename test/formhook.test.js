@@ -111,6 +111,58 @@ const pending = async () => (await store.read('formSubmissions')).filter((r) => 
   const noKey = await fetch(base() + '/admin/forms/digest', { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'key=nope' });
   check('ปุ่มส่งสรุปไม่มี ADMIN_KEY -> 401', noKey.status === 401);
 
+  // ================= คำสั่ง "สรุปฟอร์ม" ในแชท LINE =================
+  // line.js เรียก replyText/profile เป็นฟังก์ชันภายในไฟล์ ไม่ผ่าน module.exports
+  // ดักที่ line.pushText แบบข้างบนจึงไม่โดน ต้องดักที่ fetch ไป api.line.me แทน
+  const realFetch = global.fetch;
+  const replies = [];
+  let replyFails = false;
+  global.fetch = async (url, opts) => {
+    const u = String(url);
+    if (!u.startsWith('https://api.line.me/')) return realFetch(url, opts);
+    if (u.includes('/profile/')) return new Response(JSON.stringify({ displayName: 'ผู้ทดสอบ' }), { status: 200 });
+    if (u.endsWith('/message/reply')) {
+      if (replyFails) return new Response('{"message":"boom"}', { status: 500 });
+      replies.push(JSON.parse(opts.body).messages[0].text);
+      return new Response('{}', { status: 200 });
+    }
+    return new Response('{}', { status: 200 });
+  };
+  const say = (userId, text) => line.handleEvents([{
+    type: 'message', replyToken: 'rt-' + Math.random(), source: { type: 'user', userId }, message: { type: 'text', text },
+  }]);
+  const pendingNow = async () => (await pending()).length;
+
+  await hook(sample('chat-1', { formTitle: 'ฟอร์มสำหรับทดสอบแชท' }));
+  // เทียบกับค่าที่วัดจริง ไม่ fix เป็น 1 — เทสต์ XSS ข้างบนทิ้งรายการรอสรุปไว้ก่อนแล้ว (เคยทำให้ 3 ข้อ fail ผิดๆ)
+  const baseline = await pendingNow();
+  replies.length = 0;
+  await say('Ustranger', 'สรุปฟอร์ม');
+  check('คนที่ไม่ใช่แอดมินพิมพ์ "สรุปฟอร์ม" -> ไม่เห็นข้อมูลฟอร์ม', !replies.some((t) => t.includes('สรุปคำตอบ')), JSON.stringify(replies));
+  check('  ...และรายการยังรอสรุปอยู่', (await pendingNow()) === baseline);
+
+  replies.length = 0;
+  await say('Uadmin1', 'ช่วยอธิบายวิธีสรุปฟอร์มหน่อย');
+  check('แอดมินถามประโยคที่มีคำนี้อยู่ -> ไม่ถูกดักเป็นคำสั่ง', !replies.some((t) => t.includes('สรุปคำตอบ')) && (await pendingNow()) === baseline);
+
+  replyFails = true;
+  replies.length = 0;
+  await say('Uadmin1', 'สรุปฟอร์ม');
+  check('reply ล้ม -> ไม่ทำเครื่องหมาย (รอบ 08:00 ยังส่งให้)', (await pendingNow()) === baseline);
+  replyFails = false;
+
+  replies.length = 0;
+  const pushesBefore = pushed.length;
+  await say('Uadmin1', ' /สรุป ฟอร์ม ');
+  check('แอดมินพิมพ์ " /สรุป ฟอร์ม " -> ได้สรุปกลับในแชท', replies.length === 1 && replies[0].includes('ฟอร์มสำหรับทดสอบแชท'), JSON.stringify(replies));
+  check('  ...ตอบด้วย reply ไม่ใช้ push (ไม่เสียโควต้า)', pushed.length === pushesBefore);
+  check('  ...ทำเครื่องหมายว่าสรุปแล้ว รอบ 08:00 ไม่ส่งซ้ำ', (await pendingNow()) === 0);
+
+  replies.length = 0;
+  await say('Uadmin1', 'ส่งสรุปตอนนี้');
+  check('ไม่มีของใหม่ -> ตอบว่ายังไม่มีคำตอบใหม่ (คำที่แอดมินเคยพิมพ์จริงก็ใช้ได้)', replies.length === 1 && replies[0].includes('ยังไม่มีคำตอบฟอร์มใหม่'), JSON.stringify(replies));
+  global.fetch = realFetch;
+
   console.log('\nRESULT ' + pass + ' passed / ' + fail + ' failed');
   srv.close();
   process.exit(fail ? 1 : 0);

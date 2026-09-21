@@ -102,6 +102,23 @@ async function handleEvents(events) {
         continue;
       }
 
+      // คำสั่งแอดมิน "สรุปฟอร์ม" — ตอบสรุป Google Form กลับในแชทด้วย reply (ไม่นับโควต้า push)
+      // เช็คแอดมินก่อนเสมอ: ฟอร์มนี้เป็นข้อมูลการโอนเงิน ผู้ใช้ทั่วไปพิมพ์คำเดียวกันต้องไม่เห็น
+      // คนที่ไม่ใช่แอดมินจะไหลลงไปให้ AI ตอบตามปกติ ซึ่งไม่มีข้อมูลฟอร์มอยู่ในความรู้เลย
+      // require แบบ lazy เพราะ formHook ก็ require line อยู่ — require ตรงหัวไฟล์จะวนกันได้ object ครึ่งๆ
+      const formHook = require('./formHook');
+      if (formHook.isAdmin(userId) && formHook.isDigestCommand(ev.message.text)) {
+        const r = await formHook.digestVia((text) => replyText(ev.replyToken, text));
+        if (!r.items) {
+          const s = await store.settings().catch(() => ({}));
+          const last = s.formDigestAt
+            ? new Date(s.formDigestAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'medium', timeStyle: 'short' })
+            : '';
+          await replyText(ev.replyToken, `📝 ยังไม่มีคำตอบฟอร์มใหม่${last ? ` ตั้งแต่สรุปครั้งล่าสุด (${last})` : ''}`);
+        }
+        continue;
+      }
+
       const out = await bot.reply(ev.message.text, { userId, feature: 'chat' });
       if (out.text) await replyText(ev.replyToken, out.text);
     } catch (e) {

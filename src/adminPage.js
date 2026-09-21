@@ -208,7 +208,7 @@ function render(m) {
     <details class="panel fold"${m.forms.pending ? ' open' : ''}>
       <summary><h3>📝 Google Form <span class="cnt">${m.forms.ready ? `${u.n(m.forms.pending)} รอสรุป / ${u.n(m.forms.total)} ทั้งหมด` : 'อ่านไม่ได้'}</span></h3></summary>
       <div class="sub" style="margin-top:10px">${m.forms.hookOk
-    ? `สรุปส่งหาแอดมินทุกวัน 08:00 น. — วันไหนไม่มีคำตอบใหม่ก็ไม่ส่ง ไม่เสียโควต้า${m.forms.lastSent ? ` · ส่งล่าสุด ${u.esc(m.forms.lastSent)}` : ' · ยังไม่เคยส่ง'}`
+    ? `สรุปส่งหาแอดมินทุกวัน 08:00 น. — วันไหนไม่มีคำตอบใหม่ก็ไม่ส่ง ไม่เสียโควต้า${m.forms.lastSent ? ` · ส่งล่าสุด ${u.esc(m.forms.lastSent)}` : ' · ยังไม่เคยส่ง'}<br>💬 แอดมินพิมพ์ <b>สรุปฟอร์ม</b> ในแชท LINE เพื่อดูทันทีได้ (ตอบกลับในแชท ไม่เสียโควต้า)`
     : '⚠️ ยังไม่ได้ตั้ง FORM_HOOK_SECRET — endpoint รับฟอร์มจะตอบ 503'}</div>
       ${m.forms.recent.length ? `<div class="tablescroll"><table>
         <thead><tr><th>เวลา</th><th>ฟอร์ม</th><th>คำตอบ (2 ข้อแรก)</th><th class="num">สถานะ</th></tr></thead>

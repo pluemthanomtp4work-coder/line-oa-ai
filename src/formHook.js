@@ -119,4 +119,29 @@ async function digest({ dryRun = false } = {}) {
   return { sent, recipients: to.length, items: pending.length, errors };
 }
 
-module.exports = { configured, sameSecret, clean, receive, formatDigest, digest, admins };
+/**
+ * ส่งสรุปผ่านช่องทางที่ผู้เรียกเลือกเอง — ใช้กับคำสั่ง "สรุปฟอร์ม" ในแชท ซึ่งตอบด้วย reply
+ * reply ไม่นับโควต้า push เลย จึงไม่ต้องเช็คโควต้าเหมือน digest()
+ * ทำเครื่องหมาย notified หลัง deliver สำเร็จเท่านั้น — ส่งไม่ถึงก็ยังรอสรุปรอบ 08:00 ตามเดิม
+ */
+async function digestVia(deliver) {
+  const pending = (await store.read('formSubmissions')).filter((r) => r.notified !== true);
+  if (!pending.length) return { items: 0 };
+  await deliver(formatDigest(pending));
+  const now = new Date().toISOString();
+  for (const r of pending) await store.update('formSubmissions', r.id, { notified: true, notifiedAt: now });
+  await store.setSetting('formDigestAt', now);
+  return { items: pending.length };
+}
+
+// คำที่ถือเป็นคำสั่งขอสรุป — เทียบแบบตรงตัวหลังตัดช่องว่าง ไม่ใช่ "มีคำนี้อยู่ในประโยค"
+// ไม่งั้นคำถามอย่าง "ช่วยอธิบายวิธีสรุปฟอร์มหน่อย" จะถูกดักไปแทนที่จะได้คำตอบจาก AI
+// สองคำหลังคือคำที่แอดมินพิมพ์จริงตอนทดลองครั้งแรก (ก่อนมีคำสั่งนี้) จึงรับไว้ด้วย
+const DIGEST_COMMANDS = new Set(['สรุปฟอร์ม', 'ส่งสรุปตอนนี้', 'สรุปส่งตอนนี้']);
+const isDigestCommand = (text) => DIGEST_COMMANDS.has(String(text || '').replace(/\s+/g, '').replace(/^\//, ''));
+const isAdmin = (userId) => admins().includes(String(userId || ''));
+
+module.exports = {
+  configured, sameSecret, clean, receive, formatDigest, digest, digestVia,
+  admins, isAdmin, isDigestCommand, DIGEST_COMMANDS,
+};
