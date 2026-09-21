@@ -34,7 +34,7 @@ export default {
   // ต้องผ่าน waitUntil ไม่งั้น invocation จบก่อนส่ง LINE เสร็จ แล้วสรุปหายเงียบๆ
   async scheduled(controller, env, ctx) {
     ctx.waitUntil(
-      formHook.digest()
+      formHook.digest({ source: 'cron' })
         .then((r) => console.log('[digest]', JSON.stringify({ ...r, text: undefined })))
         .catch((e) => console.error('[digest] ล้มเหลว:', e.message)),
     );

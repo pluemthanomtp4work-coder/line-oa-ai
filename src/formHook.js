@@ -90,7 +90,19 @@ function formatDigest(rows, max = 4800) {
  * ทำเครื่องหมาย notified เฉพาะเมื่อส่งถึงแอดมินครบทุกคน — ส่งไม่ครบรอบนี้ พรุ่งนี้ส่งใหม่ ข้อมูลไม่หาย
  * dryRun: สร้างข้อความให้ดูเฉยๆ ไม่ส่ง ไม่แตะโควต้า
  */
-async function digest({ dryRun = false } = {}) {
+/**
+ * จดทุกครั้งที่ส่งสรุปสำเร็จ: เมื่อไร · ผ่านช่องทางไหน · ใครสั่ง
+ * มีไว้เพราะเคยเจอโควต้า push ขยับ 1 ครั้งโดยตอบไม่ได้ว่ามาจากไหน (แอดมินสั่งผ่านแชทอย่างเดียว
+ * ซึ่งเป็น reply ที่ LINE ไม่นับ) — ไม่มีบันทึกก็ได้แต่เดา เก็บ 30 ครั้งล่าสุดใน settings
+ */
+async function logDelivery(entry) {
+  const s = await store.settings().catch(() => ({}));
+  const log = Array.isArray(s.formDigestLog) ? s.formDigestLog : [];
+  log.push({ at: new Date().toISOString(), ...entry });
+  await store.setSetting('formDigestLog', log.slice(-30));
+}
+
+async function digest({ dryRun = false, source = 'unknown' } = {}) {
   const pending = (await store.read('formSubmissions')).filter((r) => r.notified !== true);
   if (!pending.length) return { sent: 0, items: 0, reason: 'ไม่มีคำตอบใหม่ ไม่ได้ส่ง (ไม่เสียโควต้า)' };
 
@@ -116,6 +128,8 @@ async function digest({ dryRun = false } = {}) {
     for (const r of pending) await store.update('formSubmissions', r.id, { notified: true, notifiedAt: now });
     await store.setSetting('formDigestAt', now);
   }
+  // จดแม้ส่งได้ไม่ครบ — push ที่ออกไปแล้วนับโควต้าไปแล้ว ต้องมีบันทึก
+  if (sent > 0) await logDelivery({ via: 'push', source, items: pending.length, recipients: sent, pushes: sent });
   return { sent, recipients: to.length, items: pending.length, errors };
 }
 
@@ -124,13 +138,14 @@ async function digest({ dryRun = false } = {}) {
  * reply ไม่นับโควต้า push เลย จึงไม่ต้องเช็คโควต้าเหมือน digest()
  * ทำเครื่องหมาย notified หลัง deliver สำเร็จเท่านั้น — ส่งไม่ถึงก็ยังรอสรุปรอบ 08:00 ตามเดิม
  */
-async function digestVia(deliver) {
+async function digestVia(deliver, { source = 'chat' } = {}) {
   const pending = (await store.read('formSubmissions')).filter((r) => r.notified !== true);
   if (!pending.length) return { items: 0 };
   await deliver(formatDigest(pending));
   const now = new Date().toISOString();
   for (const r of pending) await store.update('formSubmissions', r.id, { notified: true, notifiedAt: now });
   await store.setSetting('formDigestAt', now);
+  await logDelivery({ via: 'reply', source, items: pending.length, recipients: 1, pushes: 0 });
   return { items: pending.length };
 }
 

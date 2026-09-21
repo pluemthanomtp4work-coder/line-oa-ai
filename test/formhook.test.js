@@ -163,6 +163,14 @@ const pending = async () => (await store.read('formSubmissions')).filter((r) => 
   check('ไม่มีของใหม่ -> ตอบว่ายังไม่มีคำตอบใหม่ (คำที่แอดมินเคยพิมพ์จริงก็ใช้ได้)', replies.length === 1 && replies[0].includes('ยังไม่มีคำตอบฟอร์มใหม่'), JSON.stringify(replies));
   global.fetch = realFetch;
 
+  // ---- บันทึกการส่ง: ต้องบอกได้ว่าโควต้า push ขยับเพราะอะไร ----
+  const log = (await store.settings()).formDigestLog || [];
+  const pushLog = log.filter((x) => x.via === 'push');
+  const replyLog = log.filter((x) => x.via === 'reply');
+  check('บันทึกการส่งแบบ push มีจำนวน push ที่ใช้โควต้า', pushLog.length >= 1 && pushLog.every((x) => x.pushes >= 1), JSON.stringify(pushLog));
+  check('บันทึกการส่งแบบ reply ระบุว่าไม่ใช้โควต้า และมาจากแชท', replyLog.length === 1 && replyLog[0].pushes === 0 && replyLog[0].source === 'chat', JSON.stringify(replyLog));
+  check('reply ที่ล้มไม่ถูกบันทึกว่าส่งแล้ว', log.filter((x) => x.via === 'reply').length === 1);
+
   console.log('\nRESULT ' + pass + ' passed / ' + fail + ' failed');
   srv.close();
   process.exit(fail ? 1 : 0);

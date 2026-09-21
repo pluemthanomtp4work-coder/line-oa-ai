@@ -88,6 +88,12 @@ async function page(deps, query = {}) {
       pending: (forms || []).filter((f) => f.notified !== true).length,
       total: (forms || []).length,
       lastSent: settings.formDigestAt ? bkk(settings.formDigestAt, { dateStyle: 'medium', timeStyle: 'short' }) : '',
+      // บันทึกการส่งสรุป — ใช้ตรวจว่าโควต้า push ที่ขยับมาจากช่องทางไหน
+      log: (Array.isArray(settings.formDigestLog) ? settings.formDigestLog : []).slice(-5).reverse().map((x) => ({
+        when: bkk(x.at, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+        source: ({ cron: 'รอบ 08:00', dashboard: 'ปุ่ม Dashboard', chat: 'แชท LINE' })[x.source] || x.source || '-',
+        via: x.via, items: Number(x.items || 0), pushes: Number(x.pushes || 0),
+      })),
       recent: (forms || []).slice(-10).reverse().map((f) => ({
         when: bkk(f.submittedAt || f.createdAt, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
         form: f.formTitle || '-',
@@ -217,6 +223,7 @@ function render(m) {
           <td class="dim">${u.esc(f.first.slice(0, 90))}</td>
           <td class="num">${u.pill(f.notified ? 'สรุปแล้ว' : 'รอสรุป', f.notified ? 'on' : 'warn')}</td></tr>`).join('')}</tbody>
       </table></div>` : '<div class="empty">ยังไม่มีคำตอบจากฟอร์ม</div>'}
+      ${m.forms.log.length ? `<div class="dim" style="margin-top:12px"><b>ส่งสรุป 5 ครั้งล่าสุด</b><br>${m.forms.log.map((x) => `${u.esc(x.when)} · ${u.esc(x.source)} · ${x.via === 'push' ? `push (ใช้โควต้า ${u.n(x.pushes)})` : 'reply (ไม่ใช้โควต้า)'} · ${u.n(x.items)} รายการ`).join('<br>')}</div>` : ''}
       ${m.forms.pending ? `<form method="post" action="/admin/forms/digest" style="margin-top:12px"
         onsubmit="return confirm('ส่งสรุปตอนนี้?\\n\\nใช้โควต้า push แอดมินละ 1 ข้อความ\\nรายการที่ส่งแล้วจะไม่ถูกส่งซ้ำในรอบ 08:00')">
         ${gate.keyInput()}<button class="btn gray" type="submit">📤 ส่งสรุป ${u.n(m.forms.pending)} รายการตอนนี้</button>

@@ -108,7 +108,7 @@ async function handleEvents(events) {
       // require แบบ lazy เพราะ formHook ก็ require line อยู่ — require ตรงหัวไฟล์จะวนกันได้ object ครึ่งๆ
       const formHook = require('./formHook');
       if (formHook.isAdmin(userId) && formHook.isDigestCommand(ev.message.text)) {
-        const r = await formHook.digestVia((text) => replyText(ev.replyToken, text));
+        const r = await formHook.digestVia((text) => replyText(ev.replyToken, text), { source: 'chat' });
         if (!r.items) {
           const s = await store.settings().catch(() => ({}));
           const last = s.formDigestAt

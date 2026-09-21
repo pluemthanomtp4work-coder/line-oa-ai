@@ -208,7 +208,7 @@ action('/admin/settings/numbers', '/admin', async (req) => {
 
 // ส่งสรุปฟอร์มทันทีไม่ต้องรอรอบ 08:00 — ใช้โควต้า push แอดมินละ 1 ข้อความ
 action('/admin/forms/digest', '/admin', async () => {
-  const r = await formHook.digest();
+  const r = await formHook.digest({ source: 'dashboard' });
   if (r.reason) return r.reason;
   if (r.errors && r.errors.length) throw new Error(`ส่งได้ ${r.sent}/${r.recipients} คน: ${r.errors[0]}`);
   return `ส่งสรุป ${r.items} รายการ ถึงแอดมิน ${r.sent} คนแล้ว`;
