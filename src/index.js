@@ -505,7 +505,9 @@ action('/admin/header/test', backCard, async (req) => {
 function readMenuForm(b) {
   const size = menu.SIZES[one(b.size)] ? one(b.size) : 'large';
   const cols = Number(one(b.cols)) === 2 ? 2 : 3;
-  const slots = menu.SIZES[size].rows * cols;
+  const layout = menu.LAYOUTS[one(b.layout)] ? one(b.layout) : 'grid';
+  const heroRatio = Math.min(80, Math.max(20, Number(one(b.heroRatio)) || menu.HERO_RATIO_DEFAULT));
+  const slots = menu.slotCount(layout, size, cols);
   const buttons = [];
   for (let i = 0; i < slots; i += 1) {
     const label = String(one(b['label' + i]) || '').trim();
@@ -519,7 +521,7 @@ function readMenuForm(b) {
     buttons.push({ slot: i, label, value, actionType, icon: String(one(b['icon' + i]) || ''), color: String(one(b['color' + i]) || '#2D6CDF') });
   }
   if (!buttons.length) throw new Error('ต้องมีปุ่มอย่างน้อย 1 ปุ่ม');
-  return { name: need(b.name, 'ชื่อเมนู'), size, cols, buttons };
+  return { name: need(b.name, 'ชื่อเมนู'), size, cols, layout, heroRatio, buttons };
 }
 
 action('/admin/menu/save', '/admin/menu', async (req) => {
@@ -535,6 +537,30 @@ action('/admin/menu/save', '/admin/menu', async (req) => {
   return 'สร้างร่างเมนูแล้ว';
 });
 
+// อัปรูปเมนูที่ออกแบบมาเอง — หน้าเว็บแปลงเป็น PNG ขนาดตรงสเปก LINE ให้ก่อนส่งมาแล้ว
+// (แปลงในเบราว์เซอร์เพราะ canvas อ่าน WebP/JPEG ได้อยู่แล้ว ไม่ต้องลงไลบรารีภาพฝั่งเซิร์ฟเวอร์)
+action('/admin/menu/bg', (req) => '/admin/menu?id=' + encodeURIComponent(one(req.body.id) || ''), async (req) => {
+  const id = need(req.body.id, 'id ของเมนู (บันทึกร่างก่อนอัปรูป)');
+  const m = /^data:image\/png;base64,(.+)$/.exec(String(one(req.body.image) || ''));
+  if (!m) throw new Error('ไม่ได้รับรูป — เลือกไฟล์รูปแล้วรอให้พรีวิวขึ้นก่อนกดอัป');
+  const buf = Buffer.from(m[1], 'base64');
+  if (buf.length > MAX_UPLOAD) throw new Error('รูปใหญ่เกิน ' + Math.round(MAX_UPLOAD / 1024 / 1024) + ' MB');
+  const rec = await store.insert('files', {
+    name: 'richmenu-' + id.slice(0, 8) + '.png', size: buf.length, mime: 'image/png',
+    folderId: '', allow: [], trashed: false, stored: '',
+  });
+  const stored = rec.id + '.png';
+  await store.putFile(stored, buf, 'image/png');
+  await store.update('files', rec.id, { stored });
+  await store.update('richmenus', id, { bgFileId: rec.id });
+  return `อัปรูปเมนูแล้ว (${Math.round(buf.length / 1024)} KB) — กดเผยแพร่เพื่อให้ผู้ใช้เห็น`;
+});
+
+action('/admin/menu/bg/clear', (req) => '/admin/menu?id=' + encodeURIComponent(one(req.body.id) || ''), async (req) => {
+  await store.update('richmenus', need(req.body.id, 'id'), { bgFileId: '' });
+  return 'เอารูปที่อัปออกแล้ว กลับไปใช้รูปที่ระบบวาดให้';
+});
+
 action('/admin/menu/delete', '/admin/menu', async (req) => {
   await store.remove('richmenus', need(req.body.id, 'id'));
   return 'ลบร่างแล้ว';
@@ -543,17 +569,28 @@ action('/admin/menu/delete', '/admin/menu', async (req) => {
 action('/admin/menu/publish', '/admin/menu', async (req) => {
   if (!line.configured()) throw new Error('ยังไม่ได้ตั้ง LINE_CHANNEL_ACCESS_TOKEN');
   const data = readMenuForm(req.body);
-  const dataUrl = String(one(req.body.image) || '');
-  const mImg = /^data:image\/(png|jpeg);base64,(.+)$/.exec(dataUrl);
-  if (!mImg) throw new Error('ไม่ได้รูปจากพรีวิว — ลองรีโหลดหน้าแล้วกดใหม่');
-  const img = Buffer.from(mImg[2], 'base64');
+  const id = String(one(req.body.id) || '');
+
+  // รูปมาได้สองทาง: รูปที่ผู้ใช้อัปเอง (bgFileId) หรือรูปที่หน้าเว็บวาดให้จาก canvas
+  // รูปที่อัปเองถูกแปลงเป็น PNG ขนาดตรงสเปกตั้งแต่ตอนอัปแล้ว จึงส่งต่อได้เลย
+  const draft = id ? await store.get('richmenus', id) : null;
+  let img = null;
+  let imgFrom = 'พรีวิว';
+  if (draft && draft.bgFileId) {
+    const f = await store.get('files', draft.bgFileId);
+    if (f && f.stored) { img = await store.getFile(f.stored); imgFrom = 'รูปที่อัปโหลด'; }
+  }
+  if (!img) {
+    const mImg = /^data:image\/(png|jpeg);base64,(.+)$/.exec(String(one(req.body.image) || ''));
+    if (!mImg) throw new Error('ไม่มีรูปสำหรับเมนูนี้ — อัปรูปเอง หรือรีโหลดหน้าแล้วกดใหม่');
+    img = Buffer.from(mImg[2], 'base64');
+  }
 
   const size = menu.SIZES[data.size];
-  const cw = Math.floor(size.w / data.cols);
-  const ch = Math.floor(size.h / size.rows);
-  // พื้นที่ปุ่มคิดจากกริดเท่าๆ กัน จึงไม่ทับกันแน่นอน — LINE ปฏิเสธทั้งชุดถ้าทับ
+  // พิกัดมาจาก menu.slotBounds ซึ่งมีเทสต์คุมว่าไม่ทับกันและไม่เกินขอบ
+  // LINE ปฏิเสธทั้งชุดถ้าพื้นที่ทับกันหรือล้นรูป
   const areas = data.buttons.map((b) => ({
-    bounds: { x: (b.slot % data.cols) * cw, y: Math.floor(b.slot / data.cols) * ch, width: cw, height: ch },
+    bounds: menu.slotBounds(b.slot, data),
     action: b.actionType === 'uri' ? { type: 'uri', label: b.label.slice(0, 20), uri: b.value }
       : { type: 'message', label: b.label.slice(0, 20), text: b.value },
   }));
@@ -566,7 +603,6 @@ action('/admin/menu/publish', '/admin/menu', async (req) => {
   await line.uploadRichMenuImage(created.richMenuId, img, 'image/png');
   await line.setDefaultRichMenu(created.richMenuId);
 
-  const id = String(one(req.body.id) || '');
   const saved = id ? await store.update('richmenus', id, { ...data, published: true, lineRichMenuId: created.richMenuId })
     : await store.insert('richmenus', { ...data, published: true, lineRichMenuId: created.richMenuId });
   req._back = '/admin/menu?id=' + encodeURIComponent(saved.id);

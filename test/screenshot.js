@@ -27,7 +27,18 @@ const CASES = {
     days: many(14, (i) => ({ label: String(6 + i), value: 20 + ((i * 37) % 90) })),
     features: [{ label: 'chat', value: 880 }, { label: 'ทดลองแชท', value: 210 }, { label: 'image', value: 114 }],
     rows: many(22, (i) => ({ id: 'u' + i, name: 'ผู้ใช้ทดสอบ ' + i, role: i % 3 ? 'guest' : 'member', blocked: i === 4, calls: 120 - i * 4, thb: 20 - i * 0.7, last: '2026-09-1' + (i % 9) + ' 10:00' })),
-    recent: many(8, (i) => ({ when: '09-19 1' + i + ':00', feature: 'chat', model: 'claude-opus-5', q: 'เวลาทำการกี่โมง', ok: i !== 3, err: 'timeout', thb: 0.42 })),
+    recent: many(8, (i) => ({ when: '09-19 1' + i + ':00', feature: 'chat', model: 'gemini-3.1-flash-lite', q: 'เวลาทำการกี่โมง', ok: i !== 3, err: 'timeout', thb: 0.42 })),
+    forms: {
+      ready: true, hookOk: true, pending: 2, total: 7, lastSent: '21 ก.ย. 2569 22:44',
+      recent: many(4, (i) => ({
+        when: '21 ก.ย. 22:' + (30 + i), form: 'แบบฟอร์มแจ้งการโอนเงินของโครงการ บพท.',
+        first: 'ชื่อ - สกุล: ทดสอบ-ทิพย์รัตน์ · เลขที่สัญญา: ทดสอบ-AA', notified: i > 1,
+      })),
+      log: [
+        { when: '21 ก.ย. 22:58', source: 'แชท LINE', via: 'reply', items: 1, pushes: 0 },
+        { when: '21 ก.ย. 22:44', source: 'ปุ่ม Dashboard', via: 'push', items: 2, pushes: 1 },
+      ],
+    },
     nowLabel: now,
   }),
   users: () => require('../src/usersPage').render({
@@ -72,7 +83,13 @@ const CASES = {
   menu: () => require('../src/menuAdminPage').render({
     query: {}, ready: true, lineOk: true, liveCount: 1,
     menus: [{ id: 'm1', name: 'เมนูหลัก', size: 'large', buttons: 6, published: true, lineRichMenuId: 'richmenu-x', when: '2026-09-19 10:00' }],
-    draft: { id: 'm1', name: 'เมนูหลัก', size: 'large', cols: 3, buttons: require('../src/menuAdminPage').defaultButtons() },
+    draft: { id: 'm1', name: 'เมนูหลัก', size: 'large', cols: 3, layout: 'hero', heroRatio: 53, bgUrl: '', bgMissing: false,
+      buttons: [
+        { slot: 0, label: 'เข้าเว็บไซต์', icon: '🌐', color: '#7C4DFF', actionType: 'uri', value: 'https://example.com' },
+        { slot: 1, label: 'เชื่อม Google', icon: '🔗', color: '#2D6CDF', actionType: 'uri', value: 'https://example.com' },
+        { slot: 2, label: 'เพิ่มนัดปฏิทิน', icon: '📅', color: '#1E50B5', actionType: 'uri', value: 'https://example.com' },
+        { slot: 3, label: 'รับเงินคืน PMUA', icon: '💰', color: '#F3722C', actionType: 'uri', value: 'https://example.com' },
+      ] },
     nowLabel: now,
   }),
   template: () => require('../src/templatePage').render({
