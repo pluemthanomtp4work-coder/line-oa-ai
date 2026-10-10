@@ -143,7 +143,10 @@ function render(m) {
       <input type="hidden" name="id" value="${u.esc(d.id)}">
       <input type="hidden" name="image" id="imgdata">
       <div class="grid2">
-        <div class="fld"><label>ชื่อเมนู (ผู้ใช้ไม่เห็น)</label><input type="text" name="name" value="${u.esc(d.name)}" required></div>
+        <div class="fld"><label>ชื่อเมนู</label>
+          <input type="text" name="name" value="${u.esc(d.name)}" required>
+          <div class="dim">14 ตัวแรกไปเป็นข้อความบนแถบเปิดเมนูที่ผู้ใช้เห็น — ตั้งสั้นๆ ไม่งั้นจะโดนตัดกลางคำ</div>
+        </div>
         <div class="fld"><label>ขนาด</label>
           <select name="size" id="size">${Object.entries(SIZES).map(([k, v]) => `<option value="${k}"${k === d.size ? ' selected' : ''}>${u.esc(v.label)}</option>`).join('')}</select></div>
         <div class="fld"><label>จำนวนช่องต่อแถว</label>
