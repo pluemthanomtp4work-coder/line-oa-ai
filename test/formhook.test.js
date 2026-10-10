@@ -152,6 +152,11 @@ const pending = async () => (await store.read('formSubmissions')).filter((r) => 
   check('  ...แต่ยังไม่เห็นคำตอบของคนอื่น', !replies[0].includes('ฟอร์มสำหรับทดสอบแชท') && (await pendingNow()) === baseline);
   await store.setSetting('formPublicUrl', '');
 
+  // ข้อความที่ปุ่มในเมนูส่งจริง — ต้องถูกดักเป็นคำสั่งเหมือน "สรุปฟอร์ม"
+  check('ข้อความที่ปุ่มในเมนูส่ง -> ถือเป็นคำสั่งขอสรุป', formHook.isDigestCommand('รับเงินคืนโครงการ PMUA'));
+  check('  ...พิมพ์เองตัวเล็กก็ได้', formHook.isDigestCommand('รับเงินคืน pmua'));
+  check('  ...แต่ประโยคที่มีคำนี้อยู่ข้างในไม่ถือ', !formHook.isDigestCommand('ขอถามเรื่องรับเงินคืนโครงการ PMUA หน่อย'));
+
   replies.length = 0;
   await say('Uadmin1', 'ช่วยอธิบายวิธีสรุปฟอร์มหน่อย');
   check('แอดมินถามประโยคที่มีคำนี้อยู่ -> ไม่ถูกดักเป็นคำสั่ง', !replies.some((t) => t.includes('สรุปคำตอบ')) && (await pendingNow()) === baseline);
