@@ -541,16 +541,21 @@ action('/admin/menu/save', '/admin/menu', async (req) => {
 // (แปลงในเบราว์เซอร์เพราะ canvas อ่าน WebP/JPEG ได้อยู่แล้ว ไม่ต้องลงไลบรารีภาพฝั่งเซิร์ฟเวอร์)
 action('/admin/menu/bg', (req) => '/admin/menu?id=' + encodeURIComponent(one(req.body.id) || ''), async (req) => {
   const id = need(req.body.id, 'id ของเมนู (บันทึกร่างก่อนอัปรูป)');
-  const m = /^data:image\/png;base64,(.+)$/.exec(String(one(req.body.image) || ''));
+  const m = /^data:image\/(png|jpeg);base64,(.+)$/.exec(String(one(req.body.image) || ''));
   if (!m) throw new Error('ไม่ได้รับรูป — เลือกไฟล์รูปแล้วรอให้พรีวิวขึ้นก่อนกดอัป');
-  const buf = Buffer.from(m[1], 'base64');
-  if (buf.length > MAX_UPLOAD) throw new Error('รูปใหญ่เกิน ' + Math.round(MAX_UPLOAD / 1024 / 1024) + ' MB');
+  const ext = m[1] === 'jpeg' ? 'jpg' : 'png';
+  const buf = Buffer.from(m[2], 'base64');
+  // LINE รับรูป rich menu ไม่เกิน 1 MB — กันไว้ตรงนี้เพื่อให้ error อ่านรู้เรื่อง
+  // ถ้าปล่อยไปจนถึง LINE จะได้แค่รหัสข้อผิดพลาดดิบๆ ตอนกดเผยแพร่ ซึ่งไล่หาสาเหตุยาก
+  if (buf.length > 1024 * 1024) {
+    throw new Error(`รูปใหญ่ ${Math.round(buf.length / 1024)} KB เกินที่ LINE รับได้ (1 MB) — ลองใช้ไฟล์ที่มีรายละเอียดน้อยลง`);
+  }
   const rec = await store.insert('files', {
-    name: 'richmenu-' + id.slice(0, 8) + '.png', size: buf.length, mime: 'image/png',
+    name: 'richmenu-' + id.slice(0, 8) + '.' + ext, size: buf.length, mime: 'image/' + m[1],
     folderId: '', allow: [], trashed: false, stored: '',
   });
-  const stored = rec.id + '.png';
-  await store.putFile(stored, buf, 'image/png');
+  const stored = rec.id + '.' + ext;
+  await store.putFile(stored, buf, 'image/' + m[1]);
   await store.update('files', rec.id, { stored });
   await store.update('richmenus', id, { bgFileId: rec.id });
   return `อัปรูปเมนูแล้ว (${Math.round(buf.length / 1024)} KB) — กดเผยแพร่เพื่อให้ผู้ใช้เห็น`;

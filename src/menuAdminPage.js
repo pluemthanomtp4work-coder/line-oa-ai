@@ -185,6 +185,7 @@ function render(m) {
         <div class="grow"><input type="file" id="bgfile" accept="image/png,image/jpeg,image/webp"${d.id ? '' : ' disabled'}></div>
         <button class="btn gray" type="submit" id="bgsend" disabled>⬆️ ใช้รูปนี้</button>
       </div>
+      <div class="dim" id="bginfo"></div>
       ${d.id ? '' : '<div class="dim">กด "บันทึกร่าง" ก่อนหนึ่งครั้ง แล้วจึงอัปรูปได้</div>'}
     </form>
     ${m.draft.bgUrl ? `<form class="panel" style="margin:14px 0 0" method="post" action="/admin/menu/bg/clear">
@@ -313,7 +314,17 @@ function render(m) {
             var sc=Math.max(s.w/im.width,s.h/im.height);
             var dw=im.width*sc,dh=im.height*sc;
             o.drawImage(im,(s.w-dw)/2,(s.h-dh)/2,dw,dh);
-            bgdata.value=out.toDataURL('image/png');
+            // LINE รับไม่เกิน 1 MB — ภาพประกอบสีสันเยอะที่ export เป็น PNG มักเกิน (เคยได้ 2.9 MB)
+            // ถ้าเกินก็ลดเป็น JPEG ไล่คุณภาพลงจนพอดี ดีกว่าให้ผู้ใช้ไปย่อไฟล์เองข้างนอก
+            var LIMIT=1024*1024, url=out.toDataURL('image/png'), note='PNG';
+            var qs=[0.92,0.85,0.78,0.7,0.6];
+            for(var qi=0; qi<qs.length && Math.round((url.length-url.indexOf(',')-1)*0.75)>LIMIT; qi++){
+              url=out.toDataURL('image/jpeg',qs[qi]); note='JPEG คุณภาพ '+Math.round(qs[qi]*100)+'%';
+            }
+            var kb=Math.round((url.length-url.indexOf(',')-1)*0.75/1024);
+            var info=document.getElementById('bginfo');
+            if(info)info.textContent='ไฟล์ที่จะอัป: '+note+' ~'+kb+' KB'+(kb>1024?' (ยังเกิน 1 MB ลองใช้ภาพที่รายละเอียดน้อยลง)':'');
+            bgdata.value=url;
             if(bgsend)bgsend.disabled=false;
             // แสดงรูปที่จะได้จริงให้เห็นก่อนกดอัป
             if(bgImg){bgImg.src=bgdata.value;}
@@ -340,6 +351,9 @@ function render(m) {
       @media(max-width:980px){.stickycol{position:static}}
       .phone{background:#8CABD8;border-radius:var(--radius);padding:12px;margin-top:12px;position:relative}
       #cv,#bg{width:100%;height:auto;display:block;border-radius:8px;background:#fff}
+      /* ต้องเขียนกฎนี้เอง — #cv มี specificity สูงกว่ากฎ [hidden] ของเบราว์เซอร์
+         ถ้าไม่มี canvas เปล่าจะยังกินพื้นที่ใต้รูปที่อัป แล้วกรอบพื้นที่กดจะเพี้ยนทั้งหมด */
+      #cv[hidden],#bg[hidden]{display:none}
       /* กรอบพื้นที่กด วางทับรูปโดยคิดเป็น % ของขนาดรูปจริง จึงตรงกับที่ส่งให้ LINE เสมอ */
       #hot{position:absolute;inset:12px;pointer-events:none}
       .hotbox{position:absolute;border:2px dashed rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(0,0,0,.35) inset;
