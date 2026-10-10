@@ -57,10 +57,11 @@ function slotBounds(slot, { layout = 'grid', size = 'large', cols = 3, heroRatio
 const PALETTE = ['#2D6CDF', '#06C755', '#7C4DFF', '#F3722C', '#D64A40', '#1A1D23'];
 
 async function page(deps, query = {}) {
-  const [menus, live, files] = await Promise.all([
+  const [menus, live, files, settings] = await Promise.all([
     deps.listRichMenus().catch(() => null),
     deps.lineRichMenus ? deps.lineRichMenus().catch(() => null) : Promise.resolve(null),
     deps.listFiles ? deps.listFiles().catch(() => []) : Promise.resolve([]),
+    deps.settings ? deps.settings().catch(() => ({})) : Promise.resolve({}),
   ]);
   const rows = menus || [];
   const editing = query.id ? rows.find((r) => r.id === query.id) : null;
@@ -90,6 +91,7 @@ async function page(deps, query = {}) {
       id: '', name: 'เมนูหลัก', size: 'large', cols: 3, layout: 'grid',
       heroRatio: HERO_RATIO_DEFAULT, bgUrl: '', bgMissing: false, buttons: defaultButtons(),
     },
+    formPublicUrl: String((settings || {}).formPublicUrl || ''),
     nowLabel: deps.nowLabel(),
   });
 }
@@ -152,6 +154,11 @@ function render(m) {
           <input type="number" name="heroRatio" id="heroRatio" min="20" max="80" value="${d.heroRatio}"></div>
       </div>
       ${btnFields}
+      <div class="fld">
+        <label>ลิงก์ฟอร์มสำหรับคนทั่วไป (เมื่อกดปุ่มที่ส่งคำสั่ง “สรุปฟอร์ม”)</label>
+        <input type="url" name="formPublicUrl" value="${u.esc(m.formPublicUrl || "")}" placeholder="https://forms.gle/...">
+      </div>
+      <div class="dim" style="margin:-4px 0 10px">แอดมินกด = ได้สรุปคำตอบ · คนทั่วไปกด = ได้ลิงก์นี้ไปกรอกฟอร์ม (เว้นว่าง = ตอบว่าเป็นส่วนของเจ้าหน้าที่)</div>
       <div class="btnrow">
         <button class="btn" type="submit">💾 บันทึกร่าง</button>
         <button class="btn green" type="submit" formaction="/admin/menu/publish"

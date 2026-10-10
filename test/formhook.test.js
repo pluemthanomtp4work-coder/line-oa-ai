@@ -144,6 +144,14 @@ const pending = async () => (await store.read('formSubmissions')).filter((r) => 
   check('  ...แต่ได้คำตอบว่าเป็นส่วนของเจ้าหน้าที่', replies.length === 1 && replies[0].includes('เจ้าหน้าที่'), JSON.stringify(replies));
   check('  ...และรายการยังรอสรุปอยู่', (await pendingNow()) === baseline);
 
+  // ปุ่มเดียวแยกสองทาง — ตั้งลิงก์ฟอร์มแล้วคนทั่วไปต้องได้ลิงก์ ไม่ใช่ข้อมูลในฟอร์ม
+  await store.setSetting('formPublicUrl', 'https://forms.example/ทดสอบ');
+  replies.length = 0;
+  await say('Ustranger', 'สรุปฟอร์ม');
+  check('ตั้งลิงก์ฟอร์มไว้ -> คนทั่วไปกดปุ่มแล้วได้ลิงก์กรอกฟอร์ม', replies.length === 1 && replies[0].includes('https://forms.example/ทดสอบ'), JSON.stringify(replies));
+  check('  ...แต่ยังไม่เห็นคำตอบของคนอื่น', !replies[0].includes('ฟอร์มสำหรับทดสอบแชท') && (await pendingNow()) === baseline);
+  await store.setSetting('formPublicUrl', '');
+
   replies.length = 0;
   await say('Uadmin1', 'ช่วยอธิบายวิธีสรุปฟอร์มหน่อย');
   check('แอดมินถามประโยคที่มีคำนี้อยู่ -> ไม่ถูกดักเป็นคำสั่ง', !replies.some((t) => t.includes('สรุปคำตอบ')) && (await pendingNow()) === baseline);

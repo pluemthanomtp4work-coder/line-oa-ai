@@ -524,8 +524,21 @@ function readMenuForm(b) {
   return { name: need(b.name, 'ชื่อเมนู'), size, cols, layout, heroRatio, buttons };
 }
 
+/**
+ * ลิงก์ฟอร์มสำหรับคนทั่วไป — เก็บใน settings ไม่ใช่ในร่างเมนู
+ * เพราะคนที่พิมพ์ "สรุปฟอร์ม" ในแชทก็ต้องได้ลิงก์เดียวกัน ไม่ใช่เฉพาะคนที่กดปุ่ม
+ * ช่องนี้อยู่ในฟอร์มเดียวกับปุ่มบันทึก/เผยแพร่ จึงต้องเซฟทั้งสองทาง
+ */
+async function saveFormPublicUrl(b) {
+  if (!('formPublicUrl' in b)) return;
+  const v = String(one(b.formPublicUrl) || '').trim();
+  if (v && !/^https?:\/\//i.test(v)) throw new Error('ลิงก์ฟอร์มสำหรับคนทั่วไป ต้องขึ้นต้นด้วย http(s)://');
+  await store.setSetting('formPublicUrl', v);
+}
+
 action('/admin/menu/save', '/admin/menu', async (req) => {
   const data = readMenuForm(req.body);
+  await saveFormPublicUrl(req.body);
   const id = String(one(req.body.id) || '');
   if (id) {
     await store.update('richmenus', id, data);
@@ -575,6 +588,7 @@ action('/admin/menu/publish', '/admin/menu', async (req) => {
   if (!line.configured()) throw new Error('ยังไม่ได้ตั้ง LINE_CHANNEL_ACCESS_TOKEN');
   const data = readMenuForm(req.body);
   const id = String(one(req.body.id) || '');
+  await saveFormPublicUrl(req.body);
 
   // รูปมาได้สองทาง: รูปที่ผู้ใช้อัปเอง (bgFileId) หรือรูปที่หน้าเว็บวาดให้จาก canvas
   // รูปที่อัปเองถูกแปลงขนาดตรงสเปกตั้งแต่ตอนอัปแล้ว จึงส่งต่อได้เลย

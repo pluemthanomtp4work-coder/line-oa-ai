@@ -109,9 +109,13 @@ async function handleEvents(events) {
       const formHook = require('./formHook');
       if (formHook.isDigestCommand(ev.message.text)) {
         if (!formHook.isAdmin(userId)) {
-          // เดิมปล่อยให้ไหลไปให้ AI ตอบ เพราะคนทั่วไปไม่รู้ว่ามีคำสั่งนี้
-          // ตอนนี้คำสั่งเดียวกันอยู่บนปุ่มในเมนูที่ทุกคนเห็น — กดแล้วได้คำตอบมั่วๆ จาก AI คือบั๊กในสายตาผู้ใช้
-          await replyText(ev.replyToken, 'เมนูนี้สำหรับเจ้าหน้าที่โครงการเท่านั้นครับ 🙏 ถ้ามีเรื่องอื่นให้ช่วย พิมพ์ถามมาได้เลยครับ');
+          // ปุ่มเดียวแยกสองทาง: แอดมินได้สรุปคำตอบ · คนทั่วไปได้ลิงก์ไปกรอกฟอร์ม
+          // เดิมปล่อยให้ไหลไปให้ AI ตอบ ซึ่งตอบมั่ว — ตอนนี้คำสั่งนี้อยู่บนปุ่มที่ทุกคนเห็น
+          const s = await store.settings().catch(() => ({}));
+          const url = String(s.formPublicUrl || '').trim();
+          await replyText(ev.replyToken, url
+            ? 'กรอกแบบฟอร์มได้ที่ลิงก์นี้ครับ 👇\n' + url
+            : 'เมนูนี้สำหรับเจ้าหน้าที่โครงการเท่านั้นครับ 🙏 ถ้ามีเรื่องอื่นให้ช่วย พิมพ์ถามมาได้เลยครับ');
           continue;
         }
         const r = await formHook.digestVia((text) => replyText(ev.replyToken, text), { source: 'chat' });
