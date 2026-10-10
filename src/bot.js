@@ -42,7 +42,15 @@ async function buildSystem(userId) {
   }
   parts.push('ถ้าไม่มีข้อมูลในคลังความรู้ ให้บอกตรงๆ ว่าไม่ทราบ ห้ามเดา');
   if (mem.length) parts.push('# สิ่งที่จำไว้เกี่ยวกับผู้ใช้คนนี้\n' + mem.map((m) => '- ' + m.text).join('\n'));
+  // วันที่ปัจจุบัน — ไม่มีบรรทัดนี้ โมเดลไม่รู้ว่า "เดือนนี้/เดือนหน้า" คือเดือนไหน
+  // ตอบคำถามปฏิทินภาษีอย่าง "เดือนหน้าต้องยื่นอะไร" ผิดได้โดยไม่มีสัญญาณเตือน
+  // วางไว้ท้ายสุดเสมอ: ข้อความนี้เปลี่ยนทุกวัน ถ้าอยู่ต้นๆ จะทำให้ prompt cache ของส่วนที่นิ่ง (persona+ความรู้) พัง
+  parts.push('วันนี้คือ ' + todayLabel() + ' (เวลาประเทศไทย)');
   return parts.join('\n\n');
+}
+
+function todayLabel(now = new Date()) {
+  return now.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 /**
