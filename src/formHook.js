@@ -65,9 +65,9 @@ const clip = (s, n) => { const t = String(s || '').replace(/\s+/g, ' ').trim(); 
  * สร้างข้อความสรุป — ข้อความ LINE ยาวได้ 5000 ตัว เผื่อไว้ที่ 4800
  * ถ้าเกิน ตัดท้ายแล้วบอกจำนวนที่เหลือ ไม่ปล่อยให้ push พังทั้งก้อนเพราะยาวเกิน
  */
-function formatDigest(rows, max = 4800) {
+function formatDigest(rows, max = 4800, label = 'รายการใหม่') {
   const sorted = [...rows].sort((a, b) => String(a.submittedAt).localeCompare(String(b.submittedAt)));
-  const head = `📝 สรุปคำตอบ Google Form — ${sorted.length} รายการใหม่`;
+  const head = `📝 สรุปคำตอบ Google Form — ${sorted.length} ${label}`;
   const blocks = sorted.map((r) => {
     const when = new Date(r.submittedAt).toLocaleString('th-TH', { ...tz, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     const lines = (r.answers || []).slice(0, 4).map((x) => `   ${clip(x.q, 30)}: ${clip(x.a, 60)}`);
@@ -156,7 +156,18 @@ const DIGEST_COMMANDS = new Set(['สรุปฟอร์ม', 'ส่งสร
 const isDigestCommand = (text) => DIGEST_COMMANDS.has(String(text || '').replace(/\s+/g, '').replace(/^\//, ''));
 const isAdmin = (userId) => admins().includes(String(userId || ''));
 
+/**
+ * คำตอบล่าสุด n รายการ ไม่สนใจว่าสรุปไปแล้วหรือยัง
+ * มีไว้เพราะปุ่มในเมนูถูกกดซ้ำได้เรื่อยๆ — กดแล้วตอบว่า "ไม่มีรายการใหม่" เฉยๆ คือทางตัน
+ */
+async function recent(n = 5) {
+  const rows = await store.read('formSubmissions').catch(() => []);
+  return [...rows]
+    .sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)))
+    .slice(0, Math.max(0, n));
+}
+
 module.exports = {
-  configured, sameSecret, clean, receive, formatDigest, digest, digestVia,
+  configured, sameSecret, clean, receive, formatDigest, digest, digestVia, recent,
   admins, isAdmin, isDigestCommand, DIGEST_COMMANDS,
 };

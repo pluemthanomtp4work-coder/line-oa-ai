@@ -138,7 +138,10 @@ const pending = async () => (await store.read('formSubmissions')).filter((r) => 
   const baseline = await pendingNow();
   replies.length = 0;
   await say('Ustranger', 'สรุปฟอร์ม');
-  check('คนที่ไม่ใช่แอดมินพิมพ์ "สรุปฟอร์ม" -> ไม่เห็นข้อมูลฟอร์ม', !replies.some((t) => t.includes('สรุปคำตอบ')), JSON.stringify(replies));
+  check('คนที่ไม่ใช่แอดมินพิมพ์ "สรุปฟอร์ม" -> ไม่เห็นข้อมูลฟอร์ม', !replies.some((t) => t.includes('สรุปคำตอบ') || t.includes('ฟอร์มสำหรับทดสอบแชท')), JSON.stringify(replies));
+  // ปุ่ม "รับเงินคืน PMUA" ส่งคำสั่งนี้ และอยู่ในเมนูที่ทุกคนเห็น
+  // คนทั่วไปจึงต้องได้คำตอบที่เข้าใจได้ ไม่ใช่คำตอบมั่วๆ จาก AI
+  check('  ...แต่ได้คำตอบว่าเป็นส่วนของเจ้าหน้าที่', replies.length === 1 && replies[0].includes('เจ้าหน้าที่'), JSON.stringify(replies));
   check('  ...และรายการยังรอสรุปอยู่', (await pendingNow()) === baseline);
 
   replies.length = 0;
@@ -161,6 +164,9 @@ const pending = async () => (await store.read('formSubmissions')).filter((r) => 
   replies.length = 0;
   await say('Uadmin1', 'ส่งสรุปตอนนี้');
   check('ไม่มีของใหม่ -> ตอบว่ายังไม่มีคำตอบใหม่ (คำที่แอดมินเคยพิมพ์จริงก็ใช้ได้)', replies.length === 1 && replies[0].includes('ยังไม่มีคำตอบฟอร์มใหม่'), JSON.stringify(replies));
+  // ปุ่มในเมนูถูกกดซ้ำได้เรื่อยๆ — กดแล้วต้องเห็นของเก่า ไม่ใช่ทางตัน
+  check('  ...และแนบรายการล่าสุดมาให้ดูด้วย', replies[0].includes('รายการล่าสุด') && replies[0].includes('ฟอร์มสำหรับทดสอบแชท'), JSON.stringify(replies));
+  check('  ...ดูย้อนหลังไม่ทำให้รอบ 08:00 ส่งซ้ำ', (await pendingNow()) === 0);
   global.fetch = realFetch;
 
   // ---- บันทึกการส่ง: ต้องบอกได้ว่าโควต้า push ขยับเพราะอะไร ----

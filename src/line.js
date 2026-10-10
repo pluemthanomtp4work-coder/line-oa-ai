@@ -103,18 +103,29 @@ async function handleEvents(events) {
       }
 
       // คำสั่งแอดมิน "สรุปฟอร์ม" — ตอบสรุป Google Form กลับในแชทด้วย reply (ไม่นับโควต้า push)
-      // เช็คแอดมินก่อนเสมอ: ฟอร์มนี้เป็นข้อมูลการโอนเงิน ผู้ใช้ทั่วไปพิมพ์คำเดียวกันต้องไม่เห็น
-      // คนที่ไม่ใช่แอดมินจะไหลลงไปให้ AI ตอบตามปกติ ซึ่งไม่มีข้อมูลฟอร์มอยู่ในความรู้เลย
+      // คำสั่งนี้อยู่บนปุ่มในเมนู LINE ด้วย ทุกคนจึงกดได้
+      // เช็คแอดมินก่อนเสมอ: ฟอร์มนี้เป็นข้อมูลการโอนเงินของคนอื่น คนทั่วไปต้องไม่เห็น
       // require แบบ lazy เพราะ formHook ก็ require line อยู่ — require ตรงหัวไฟล์จะวนกันได้ object ครึ่งๆ
       const formHook = require('./formHook');
-      if (formHook.isAdmin(userId) && formHook.isDigestCommand(ev.message.text)) {
+      if (formHook.isDigestCommand(ev.message.text)) {
+        if (!formHook.isAdmin(userId)) {
+          // เดิมปล่อยให้ไหลไปให้ AI ตอบ เพราะคนทั่วไปไม่รู้ว่ามีคำสั่งนี้
+          // ตอนนี้คำสั่งเดียวกันอยู่บนปุ่มในเมนูที่ทุกคนเห็น — กดแล้วได้คำตอบมั่วๆ จาก AI คือบั๊กในสายตาผู้ใช้
+          await replyText(ev.replyToken, 'เมนูนี้สำหรับเจ้าหน้าที่โครงการเท่านั้นครับ 🙏 ถ้ามีเรื่องอื่นให้ช่วย พิมพ์ถามมาได้เลยครับ');
+          continue;
+        }
         const r = await formHook.digestVia((text) => replyText(ev.replyToken, text), { source: 'chat' });
         if (!r.items) {
           const s = await store.settings().catch(() => ({}));
           const last = s.formDigestAt
             ? new Date(s.formDigestAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'medium', timeStyle: 'short' })
             : '';
-          await replyText(ev.replyToken, `📝 ยังไม่มีคำตอบฟอร์มใหม่${last ? ` ตั้งแต่สรุปครั้งล่าสุด (${last})` : ''}`);
+          // ไม่มีรายการใหม่ ก็ยังแสดงของเก่าให้ดู — ปุ่มในเมนูถูกกดซ้ำได้เรื่อยๆ กดแล้วได้ทางตันคือเสีย
+          const back = await formHook.recent(5);
+          const head = `📝 ยังไม่มีคำตอบฟอร์มใหม่${last ? ` ตั้งแต่สรุปครั้งล่าสุด (${last})` : ''}`;
+          await replyText(ev.replyToken, back.length
+            ? head + '\n\n' + formHook.formatDigest(back, 4600, 'รายการล่าสุด')
+            : '📝 ยังไม่มีคำตอบฟอร์มเข้ามาเลยครับ');
         }
         continue;
       }

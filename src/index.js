@@ -577,18 +577,25 @@ action('/admin/menu/publish', '/admin/menu', async (req) => {
   const id = String(one(req.body.id) || '');
 
   // รูปมาได้สองทาง: รูปที่ผู้ใช้อัปเอง (bgFileId) หรือรูปที่หน้าเว็บวาดให้จาก canvas
-  // รูปที่อัปเองถูกแปลงเป็น PNG ขนาดตรงสเปกตั้งแต่ตอนอัปแล้ว จึงส่งต่อได้เลย
+  // รูปที่อัปเองถูกแปลงขนาดตรงสเปกตั้งแต่ตอนอัปแล้ว จึงส่งต่อได้เลย
+  // แต่ต้องส่ง content-type ให้ตรงชนิดไฟล์จริง — รูปที่บีบเป็น JPEG แล้วส่งว่า image/png จะโดน LINE ปฏิเสธ
   const draft = id ? await store.get('richmenus', id) : null;
   let img = null;
+  let imgMime = 'image/png';
   let imgFrom = 'พรีวิว';
   if (draft && draft.bgFileId) {
     const f = await store.get('files', draft.bgFileId);
-    if (f && f.stored) { img = await store.getFile(f.stored); imgFrom = 'รูปที่อัปโหลด'; }
+    if (f && f.stored) {
+      img = await store.getFile(f.stored);
+      imgMime = f.mime === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+      imgFrom = 'รูปที่อัปโหลด';
+    }
   }
   if (!img) {
     const mImg = /^data:image\/(png|jpeg);base64,(.+)$/.exec(String(one(req.body.image) || ''));
     if (!mImg) throw new Error('ไม่มีรูปสำหรับเมนูนี้ — อัปรูปเอง หรือรีโหลดหน้าแล้วกดใหม่');
     img = Buffer.from(mImg[2], 'base64');
+    imgMime = 'image/' + mImg[1];
   }
 
   const size = menu.SIZES[data.size];
@@ -605,7 +612,7 @@ action('/admin/menu/publish', '/admin/menu', async (req) => {
     selected: true, name: data.name.slice(0, 300), chatBarText: data.name.slice(0, 14),
     areas,
   });
-  await line.uploadRichMenuImage(created.richMenuId, img, 'image/png');
+  await line.uploadRichMenuImage(created.richMenuId, img, imgMime);
   await line.setDefaultRichMenu(created.richMenuId);
 
   const saved = id ? await store.update('richmenus', id, { ...data, published: true, lineRichMenuId: created.richMenuId })
